@@ -28,11 +28,11 @@ class TestVerificationCommand extends Command
         $claim = 'Inflation reached 7.2% in May';
 
         $evidence = '
-Reuters reported that inflation reached 7.2% in May.
+May inflation likely climbed from April\'s 7.2%.
 
-BBC also reported inflation at 7.2%.
+Analysts expect inflation to rise.
 
-The central bank confirmed the figure.
+Some economists predict higher prices.
 ';
 
         $result = $this->claimVerificationService->verify(

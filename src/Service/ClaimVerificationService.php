@@ -20,6 +20,14 @@ $claim
 Evidence:
 $evidence
 
+Important verification rules:
+
+- Verify the exact claim, not just matching keywords.
+- Do not assume a claim is true because the same numbers appear in the evidence.
+- Check whether the evidence actually supports the full statement.
+- If the evidence is unrelated, weak, ambiguous, or only partially matches, use INSUFFICIENT_EVIDENCE.
+- Be conservative. When unsure, prefer INSUFFICIENT_EVIDENCE.
+
 Return ONLY valid JSON.
 
 Score rules:
