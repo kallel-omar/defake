@@ -147,11 +147,11 @@ final class AnalyzePostMessageHandler
             $postCheck->setProcessingStep('Generating AI verification');
             $this->em->flush();
 
-           $result = $this->postAnalysisService->analyze($url, $postText);$result = $this->postAnalysisService->analyze(
-            $url,
-            $postText,
-            $extraction['sourceContext'] ?? []
-        );
+        $result = $this->postAnalysisService->analyze(
+    $url,
+    $postText,
+    $extraction['sourceContext'] ?? []
+);
 
             $postCheck->setStatus('completed');
             $postCheck->setProcessingStep('Completed');
