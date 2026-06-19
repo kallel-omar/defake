@@ -44,6 +44,12 @@ Rules:
 - Questions are not fake news unless they include a factual claim.
 - Rumors or accusations can be verifiable.
 - Mixed posts should contain factual claim = true.
+
+- If the post contains at least one factual statement that can be checked, set containsClaim to true.
+- A post can be personal or casual and still contain a verifiable factual claim.
+- Do not reject a post only because it is about sports, clubs, celebrations, family, or public events.
+- If uncertain, prefer containsClaim = true and type = mixed.
+
 - The title must describe what the post is about.
 - The summary must explain the content clearly for a normal user.
 

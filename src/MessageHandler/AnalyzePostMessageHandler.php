@@ -7,6 +7,9 @@ use App\Repository\PostCheckRepository;
 use App\Service\ApifyFacebookExtractorService;
 use App\Service\ExternalLinkExtractorService;
 use App\Service\PostAnalysisService;
+use App\Service\ClaimExtractionService;
+use App\Service\ClaimVerificationService;
+use App\Service\InternetEvidenceService;
 use App\Service\PostClassifierService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
@@ -20,7 +23,10 @@ final class AnalyzePostMessageHandler
         private readonly ApifyFacebookExtractorService $facebookPostExtractorService,
         private readonly PostClassifierService $postClassifierService,
         private readonly PostAnalysisService $postAnalysisService,
-        private readonly ExternalLinkExtractorService $externalLinkExtractorService
+        private readonly ExternalLinkExtractorService $externalLinkExtractorService,
+        private readonly ClaimExtractionService $claimExtractionService,
+        private readonly InternetEvidenceService $internetEvidenceService,
+        private readonly ClaimVerificationService $claimVerificationService
     ) {
     }
 
@@ -143,6 +149,7 @@ final class AnalyzePostMessageHandler
 
             $postCheck->setProcessingStep('Searching sources');
             $this->em->flush();
+           
 
             $postCheck->setProcessingStep('Generating AI verification');
             $this->em->flush();
