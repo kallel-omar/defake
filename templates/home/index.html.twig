@@ -1,0 +1,140 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}DeFake - Fake News Detection{% endblock %}
+
+{% block body %}
+<div class="container py-5">
+
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+
+            <div class="text-center mb-5">
+
+                <span class="badge bg-danger mb-3 px-3 py-2">
+                    Public Beta
+                </span>
+
+                <h1 class="display-3 fw-bold">
+                    DeFake
+                </h1>
+
+                <p class="lead text-muted mb-2">
+                    Analyze social media posts, articles and online content
+                    to detect misinformation and fake news.
+                </p>
+
+                <div class="small text-muted">
+                    🚧 AI-generated credibility analysis • Verify important information independently
+                </div>
+
+            </div>
+
+            <div class="card shadow-lg border-0 rounded-4">
+                <div class="card-body p-5">
+
+                    {% for message in app.flashes('error') %}
+                        <div class="alert alert-danger">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+
+                    {% for message in app.flashes('info') %}
+                        <div class="alert alert-info">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+
+                    <form method="post">
+
+                        <div class="mb-4">
+                            <label class="form-label fw-semibold">
+                                Paste a Facebook post URL
+                            </label>
+
+                            <input
+                                type="url"
+                                name="url"
+                                class="form-control form-control-lg"
+                                placeholder="https://facebook.com/post/..."
+                                required
+                            >
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label fw-semibold">
+                                Paste the Facebook post text
+                            </label>
+
+                            <textarea
+                                name="post_text"
+                                class="form-control"
+                                rows="6"
+                                placeholder="Optional: paste the post text here to improve accuracy..."
+                            ></textarea>
+
+                            <div class="form-text">
+                                DeFake automatically extracts Facebook post content when possible.
+                                You may also paste the post text manually to improve accuracy.
+                            </div>
+                        </div>
+
+                        <button
+                            type="submit"
+                            class="btn btn-danger btn-lg w-100">
+                            🔍 Analyze Content
+                        </button>
+
+                    </form>
+
+                </div>
+            </div>
+
+            <div class="row text-center mt-5">
+
+                <div class="col-md-4 mb-3">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-body">
+                            <h3>⚡</h3>
+                            <h5>Fast Analysis</h5>
+                            <p class="text-muted small">
+                                Get credibility results within seconds.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-4 mb-3">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-body">
+                            <h3>🤖</h3>
+                            <h5>AI Review</h5>
+                            <p class="text-muted small">
+                                AI evaluates claims, sources and language.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-4 mb-3">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-body">
+                            <h3>📊</h3>
+                            <h5>Detailed Report</h5>
+                            <p class="text-muted small">
+                                View score, verdict and explanation.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <p class="text-center text-muted small mt-4 mb-0">
+                DeFake is a beta tool. Results may contain errors and should not replace professional fact-checking.
+            </p>
+
+        </div>
+    </div>
+
+</div>
+{% endblock %}

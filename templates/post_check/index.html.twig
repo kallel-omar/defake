@@ -1,0 +1,62 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}DeFake Analysis{% endblock %}
+
+{% block body %}
+<div class="container mt-5">
+
+    <div class="mb-4">
+        <a href="{{ path('app_home') }}" class="btn btn-outline-secondary btn-sm">
+            ← Analyze another link
+        </a>
+    </div>
+
+    <div class="card shadow-lg border-0">
+        <div class="card-body p-5">
+
+            <h1 class="fw-bold mb-2">DeFake Analysis</h1>
+            <p class="text-muted mb-4">Verify before you share.</p>
+
+            <div class="mb-4">
+                <h6 class="text-muted">URL</h6>
+                <p class="fw-semibold">{{ postCheck.url }}</p>
+            </div>
+
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <h6 class="text-muted">Platform</h6>
+                    <span class="badge bg-dark">{{ postCheck.platform }}</span>
+                </div>
+
+                <div class="col-md-4">
+                    <h6 class="text-muted">Status</h6>
+                    <span class="badge bg-warning text-dark">{{ postCheck.status }}</span>
+                </div>
+
+                <div class="col-md-4">
+                    <h6 class="text-muted">Score</h6>
+                    <strong>{{ postCheck.score ?? 'Not analyzed yet' }}</strong>
+                </div>
+            </div>
+
+            <hr>
+
+            <div class="mb-4">
+                <h6 class="text-muted">Verdict</h6>
+                <h3>
+                    {{ postCheck.verdict ?? 'Pending analysis' }}
+                </h3>
+            </div>
+
+            <div>
+                <h6 class="text-muted">Explanation</h6>
+                <p>
+                    {{ postCheck.explanation ?? 'The link has been saved but not analyzed yet.' }}
+                </p>
+            </div>
+
+        </div>
+    </div>
+
+</div>
+{% endblock %}

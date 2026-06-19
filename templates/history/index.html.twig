@@ -1,0 +1,136 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Analysis History{% endblock %}
+
+{% block body %}
+<div class="container py-5">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Analysis History</h1>
+
+        <a href="{{ path('app_home') }}"
+           class="btn btn-primary">
+            New Analysis
+        </a>
+    </div>
+
+    <div class="card shadow border-0">
+
+        <div class="card-body">
+
+            {% for message in app.flashes('success') %}
+                <div class="alert alert-success">
+                    {{ message }}
+                </div>
+            {% endfor %}
+
+            {% if postChecks is empty %}
+
+                <div class="alert alert-info">
+                    No analyses found.
+                </div>
+
+            {% else %}
+
+                <table class="table table-hover align-middle">
+
+                    <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Platform</th>
+                        <th>Verdict</th>
+                        <th>Score</th>
+                        <th>Date</th>
+                        <th>Actions</th>
+                    </tr>
+                    </thead>
+
+                    <tbody>
+
+                    {% for check in postChecks %}
+
+                        <tr>
+
+                            <td>#{{ check.id }}</td>
+
+                            <td>
+                                {{ check.platform }}
+                            </td>
+
+                            <td>
+
+                                {% if check.verdict == 'Likely Trusted' %}
+                                    <span class="badge bg-success">
+                                        Trusted
+                                    </span>
+
+                                {% elseif check.verdict == 'Suspicious' %}
+                                    <span class="badge bg-warning text-dark">
+                                        Suspicious
+                                    </span>
+
+                                {% elseif check.verdict == 'Likely Fake' %}
+                                    <span class="badge bg-danger">
+                                        Fake
+                                    </span>
+
+                                {% else %}
+                                    <span class="badge bg-secondary">
+                                        Pending
+                                    </span>
+                                {% endif %}
+
+                            </td>
+
+                            <td>
+                                {% if check.score is not null %}
+                                    {{ check.score }}%
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+
+                            <td>
+                                {{ check.createdAt|date('d/m/Y H:i') }}
+                            </td>
+
+                            <td>
+
+                                <a
+                                    href="{{ path('app_post_check_show', {'id': check.id}) }}"
+                                    class="btn btn-sm btn-outline-primary">
+                                    View
+                                </a>
+
+                                <form
+                                    method="post"
+                                    action="{{ path('app_post_check_delete', {'id': check.id}) }}"
+                                    class="d-inline"
+                                    onsubmit="return confirm('Delete this analysis?');">
+
+                                    <button
+                                        type="submit"
+                                        class="btn btn-sm btn-outline-danger">
+                                        Delete
+                                    </button>
+
+                                </form>
+
+                            </td>
+
+                        </tr>
+
+                    {% endfor %}
+
+                    </tbody>
+
+                </table>
+
+            {% endif %}
+
+        </div>
+
+    </div>
+
+</div>
+{% endblock %}

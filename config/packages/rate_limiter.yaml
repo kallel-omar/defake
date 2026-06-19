@@ -1,0 +1,11 @@
+framework:
+    rate_limiter:
+        guest_analysis:
+            policy: 'fixed_window'
+            limit: 500
+            interval: '1 day'
+
+        user_analysis:
+            policy: 'fixed_window'
+            limit: 1000
+            interval: '1 day'

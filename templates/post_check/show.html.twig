@@ -1,0 +1,329 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Analysis Result - DeFake{% endblock %}
+
+{% block body %}
+{% set score = postCheck.score ?? 0 %}
+
+{% if postCheck.verdict == 'NOT_VERIFIABLE' %}
+    {% set verdictClass = 'info' %}
+    {% set verdictIcon = '📝' %}
+    {% set displayVerdict = postCheck.contentType|default('Content')|replace({'_':' '})|title %}
+    {% set pageSubtitle = 'AI content classification for this Facebook post.' %}
+{% elseif postCheck.verdict == 'Likely Trusted' %}
+    {% set verdictClass = 'success' %}
+    {% set verdictIcon = '🟢' %}
+    {% set displayVerdict = 'Likely Trusted' %}
+    {% set pageSubtitle = 'AI credibility report for this Facebook post.' %}
+{% elseif postCheck.verdict == 'Suspicious' %}
+    {% set verdictClass = 'warning' %}
+    {% set verdictIcon = '🟡' %}
+    {% set displayVerdict = 'Suspicious' %}
+    {% set pageSubtitle = 'AI credibility report for this Facebook post.' %}
+{% elseif postCheck.verdict == 'Likely Fake' %}
+    {% set verdictClass = 'danger' %}
+    {% set verdictIcon = '🔴' %}
+    {% set displayVerdict = 'Likely Fake' %}
+    {% set pageSubtitle = 'AI credibility report for this Facebook post.' %}
+{% else %}
+    {% set verdictClass = 'secondary' %}
+    {% set verdictIcon = '⚪' %}
+    {% set displayVerdict = postCheck.verdict ?: 'Pending Analysis' %}
+    {% set pageSubtitle = 'AI credibility report for this Facebook post.' %}
+{% endif %}
+
+{% if postCheck.status|lower == 'processing' %}
+    <meta http-equiv="refresh" content="5">
+
+    <div class="container py-5">
+        <div class="row justify-content-center">
+            <div class="col-lg-7">
+
+                <div class="card shadow-lg border-0 rounded-4 text-center">
+                    <div class="card-body p-5">
+
+                        <div class="spinner-border text-danger mb-4" role="status"></div>
+
+                        <h3 class="fw-bold mb-2">Analysis in progress</h3>
+
+                        <p class="text-muted mb-4">
+                            DeFake is checking this Facebook post. This page refreshes automatically.
+                        </p>
+
+                        <div class="text-start mx-auto" style="max-width: 430px;">
+                            <div class="d-flex align-items-center mb-3">
+                                <span class="me-3 text-success fw-bold">✓</span>
+                                <span class="fw-semibold">Extracting Facebook post</span>
+                            </div>
+
+                            <div class="d-flex align-items-center mb-3">
+                                <span class="me-3">⏳</span>
+                                <span class="fw-semibold">Classifying content</span>
+                            </div>
+
+                            <div class="d-flex align-items-center mb-3">
+                                <span class="me-3">⏳</span>
+                                <span class="fw-semibold">Searching sources</span>
+                            </div>
+
+                            <div class="d-flex align-items-center">
+                                <span class="me-3">⏳</span>
+                                <span class="fw-semibold">Generating AI verification</span>
+                            </div>
+                        </div>
+
+                        <p class="text-muted small mt-4 mb-0">
+                            This may take a few seconds depending on Facebook extraction and AI response time.
+                        </p>
+
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+{% else %}
+<div class="container py-5">
+
+    <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-4">
+        <div>
+            <span class="badge bg-danger rounded-pill px-3 py-2 mb-3">
+                DeFake Report
+            </span>
+
+            <h1 class="fw-bold mb-1">Analysis Result</h1>
+            <p class="text-muted mb-0">{{ pageSubtitle }}</p>
+        </div>
+
+        <a href="{{ path('app_home') }}" class="btn btn-outline-dark rounded-pill px-4">
+            New Analysis
+        </a>
+    </div>
+
+    <div class="card shadow-lg border-0 rounded-4 mb-4 overflow-hidden">
+        <div class="card-body p-4 p-md-5">
+
+            <div class="row align-items-center g-4">
+
+                <div class="col-lg-8">
+                    <h6 class="text-muted text-uppercase small fw-bold mb-2">
+                        Checked URL
+                    </h6>
+
+                    <a href="{{ postCheck.url }}" target="_blank" class="text-break fw-semibold text-decoration-none">
+                        {{ postCheck.url }}
+                    </a>
+
+                    <p class="text-muted small mt-2 mb-0">
+                        Analyzed on {{ postCheck.createdAt|date('d/m/Y H:i') }}
+                    </p>
+                </div>
+
+                <div class="col-lg-4 text-lg-end">
+                    <span class="badge bg-{{ verdictClass }} fs-6 px-3 py-2 rounded-pill">
+                        {{ verdictIcon }} {{ displayVerdict }}
+                    </span>
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+
+    {% if postCheck.verdict == 'NOT_VERIFIABLE' %}
+
+        <div class="card shadow border-0 rounded-4 mb-4">
+            <div class="card-body p-4 p-md-5">
+
+                <div class="text-center mb-4">
+                    <div class="fs-1 mb-3">📝</div>
+                    <h3 class="fw-bold mb-2">{{ displayVerdict }}</h3>
+
+                    <p class="text-muted mb-0">
+                        DeFake classified this content as <strong>{{ displayVerdict }}</strong>.
+                        Fact-checking was skipped because the post is not a clear news claim.
+                    </p>
+                </div>
+
+                <div class="row g-3 mb-4">
+
+                    <div class="col-md-6">
+                        <div class="border rounded-4 p-4 h-100 bg-light">
+                            <h5 class="fw-bold mb-2">Post Type</h5>
+
+                            <span class="badge bg-info fs-6 rounded-pill px-3">
+                                {{ displayVerdict }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="border rounded-4 p-4 h-100 bg-light">
+                            <h5 class="fw-bold mb-2">AI Title</h5>
+
+                            <p class="mb-0">
+                                {{ postCheck.contentTitle ?: 'No title available.' }}
+                            </p>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="bg-light rounded-4 p-4 mb-4">
+                    <h5 class="fw-bold mb-3">Summary</h5>
+
+                    <p class="mb-0 lh-lg">
+                        {{ postCheck.contentSummary ?: 'No summary available.' }}
+                    </p>
+                </div>
+
+                <div class="alert alert-info rounded-4 mb-0">
+                    <h5 class="fw-bold mb-2">Why DeFake skipped fact-checking</h5>
+
+                    <p class="mb-0 lh-lg">
+                        {{ postCheck.verificationReason ?: postCheck.explanation }}
+                    </p>
+                </div>
+
+            </div>
+        </div>
+
+    {% else %}
+
+        <div class="row g-4 mb-4">
+
+            <div class="col-md-4">
+                <div class="card shadow border-0 rounded-4 h-100">
+                    <div class="card-body p-4">
+                        <h6 class="text-muted text-uppercase small fw-bold">Platform</h6>
+                        <h4 class="fw-bold mb-0">{{ postCheck.platform ?: 'Unknown' }}</h4>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card shadow border-0 rounded-4 h-100">
+                    <div class="card-body p-4">
+                        <h6 class="text-muted text-uppercase small fw-bold">Status</h6>
+                        <h4 class="fw-bold mb-0">{{ postCheck.status|title }}</h4>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card shadow border-0 rounded-4 h-100">
+                    <div class="card-body p-4">
+                        <h6 class="text-muted text-uppercase small fw-bold">Credibility Score</h6>
+
+                        <div class="d-flex align-items-end gap-2 mb-2">
+                            <h2 class="fw-bold text-{{ verdictClass }} mb-0">
+                                {{ score }}%
+                            </h2>
+
+                            <span class="text-muted small mb-1">
+                                out of 100
+                            </span>
+                        </div>
+
+                        <div class="progress rounded-pill" style="height: 10px;">
+                            <div
+                                class="progress-bar bg-{{ verdictClass }}"
+                                role="progressbar"
+                                style="width: {{ score }}%;"
+                                aria-valuenow="{{ score }}"
+                                aria-valuemin="0"
+                                aria-valuemax="100">
+                            </div>
+                        </div>
+
+                        <p class="text-muted small mt-2 mb-0">
+                            0 = high fake risk, 100 = more trusted
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="card shadow border-0 rounded-4 mb-4">
+            <div class="card-body p-4 p-md-5">
+
+                <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap mb-3">
+                    <h4 class="fw-bold mb-0">Verdict</h4>
+
+                    <span class="badge bg-{{ verdictClass }} rounded-pill fs-6 px-3 py-2">
+                        {{ verdictIcon }} {{ displayVerdict }}
+                    </span>
+                </div>
+
+                <p class="text-muted mb-0 lh-lg">
+                    {{ postCheck.explanation ?? 'No explanation available yet.' }}
+                </p>
+
+            </div>
+        </div>
+
+        <div class="card shadow border-0 rounded-4">
+            <div class="card-body p-4 p-md-5">
+
+                <h4 class="fw-bold mb-4">Why this score?</h4>
+
+                {% set scores = [
+                    {
+                        label: 'Evidence Score',
+                        value: postCheck.evidenceScore,
+                        color: 'primary',
+                        reason: postCheck.evidenceReason ?: 'No evidence reason available.'
+                    },
+                    {
+                        label: 'Source Score',
+                        value: postCheck.sourceScore,
+                        color: 'success',
+                        reason: postCheck.sourceReason ?: 'No source reason available.'
+                    },
+                    {
+                        label: 'Language Score',
+                        value: postCheck.languageScore,
+                        color: 'warning',
+                        reason: postCheck.languageReason ?: 'No language reason available.'
+                    },
+                    {
+                        label: 'Verification Score',
+                        value: postCheck.verificationScore,
+                        color: 'info',
+                        reason: postCheck.verificationReason ?: 'No verification reason available.'
+                    }
+                ] %}
+
+                {% for item in scores %}
+                    {% set value = item.value ?? 0 %}
+
+                    <div class="mb-4">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <label class="fw-bold">{{ item.label }}</label>
+
+                            <span class="badge bg-light text-dark border">
+                                {{ value }}/25
+                            </span>
+                        </div>
+
+                        <div class="progress rounded-pill mb-2" style="height: 10px;">
+                            <div class="progress-bar bg-{{ item.color }}"
+                                 style="width: {{ (value / 25) * 100 }}%">
+                            </div>
+                        </div>
+
+                        <small class="text-muted lh-lg">
+                            {{ item.reason }}
+                        </small>
+                    </div>
+                {% endfor %}
+
+            </div>
+        </div>
+
+    {% endif %}
+
+</div>
+{% endif %}
+{% endblock %}
