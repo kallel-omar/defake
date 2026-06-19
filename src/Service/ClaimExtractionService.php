@@ -22,6 +22,11 @@ Rules:
 - Ignore emotions.
 - Ignore predictions.
 - Ignore questions.
+- Ignore attribution statements such as "Reuters reported", "BBC reported", "According to...", "Sources said..."
+- Extract the underlying factual claim instead.
+- Do not create claims about the reporting source.
+- Do not return duplicate claims.
+- If two claims describe the same fact, keep only the most complete version.
 - Keep only factual statements that can be verified.
 
 Return ONLY valid JSON:
