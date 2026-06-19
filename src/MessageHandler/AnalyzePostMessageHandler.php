@@ -171,14 +171,14 @@ final class AnalyzePostMessageHandler
 
             $this->em->flush();
         } catch (\Throwable $e) {
-            $this->markAsFailed(
-                $postCheck,
-                'FAILED',
-                'Analysis failed: ' . $e->getMessage()
-            );
+    $this->markAsFailed(
+        $postCheck,
+        'FAILED',
+        'Analysis failed: ' . $e->getMessage()
+    );
 
-            throw $e;
-        }
+    return;
+}
     }
 
     private function filterExternalLinks(array $links): array
