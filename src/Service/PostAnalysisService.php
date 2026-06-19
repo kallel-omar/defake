@@ -2,21 +2,23 @@
 
 namespace App\Service;
 
-
+use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 class PostAnalysisService
 {
     public function __construct(
-    private readonly CredibilityEngineService $credibilityEngineService,
-    private readonly GroqAiService $groqAiService,
-    private readonly OfficialSourceDetectorService $officialSourceDetectorService,
-    private readonly InternetEvidenceService $internetEvidenceService
-) {
-}
+        private readonly string $serperApiKey,
+        private readonly HttpClientInterface $httpClient,
+        private readonly CredibilityEngineService $credibilityEngineService,
+        private readonly SourceConfidenceService $sourceConfidenceService,
+        private readonly GroqAiService $groqAiService,
+        private readonly OfficialSourceDetectorService $officialSourceDetectorService
+    ) {
+    }
 
     public function analyze(string $url, string $postText, array $sourceContext = []): array
     {
-        $internetEvidence = $this->internetEvidenceService->search($postText);
+        $internetEvidence = $this->searchInternetEvidence($postText);
 
         $calculatedSourceScore = $this->credibilityEngineService->calculateSourceScore($internetEvidence);
 
@@ -178,7 +180,81 @@ PROMPT;
 
    
 
-   
+    private function searchInternetEvidence(string $postText): string
+    {
+        $query = $this->extractMainClaim($postText);
+
+        $data = $this->callSerper('news', $query);
+        $items = $data['news'] ?? [];
+
+        if (empty($items)) {
+            $data = $this->callSerper('search', $query);
+            $items = $data['organic'] ?? [];
+        }
+
+        if (empty($items)) {
+            return 'No internet evidence found.';
+        }
+
+        $results = [];
+
+        foreach (array_slice($items, 0, 5) as $item) {
+            $title = $item['title'] ?? 'No title';
+            $snippet = $item['snippet'] ?? 'No snippet';
+            $link = $item['link'] ?? 'No link';
+
+            $confidence = $this->sourceConfidenceService->score($link);
+
+            $results[] = "- Title: {$title}
+  Snippet: {$snippet}
+  Link: {$link}
+  Source Confidence: {$confidence['score']}/100
+  Source Type: {$confidence['label']}";
+        }
+
+        return implode("\n\n", $results);
+    }
+
+    private function callSerper(string $type, string $query): array
+    {
+        $endpoint = $type === 'news'
+            ? 'https://google.serper.dev/news'
+            : 'https://google.serper.dev/search';
+
+        $response = $this->httpClient->request('POST', $endpoint, [
+            'headers' => [
+                'X-API-KEY' => $this->serperApiKey,
+                'Content-Type' => 'application/json',
+            ],
+            'json' => [
+                'q' => $query,
+                'num' => 5,
+            ],
+            'timeout' => 30,
+        ]);
+
+        return $response->toArray(false);
+    }
+
+    private function extractMainClaim(string $postText): string
+    {
+        $content = $this->groqAiService->ask([
+            [
+                'role' => 'system',
+                'content' => 'Extract the single most important factual claim from the text. Return only the claim.',
+            ],
+            [
+                'role' => 'user',
+                'content' => $postText,
+            ],
+        ]);
+
+        if (!$content) {
+            return $postText;
+        }
+
+        return trim($content);
+    }
 
     private function failedResult(string $explanation): array
     {

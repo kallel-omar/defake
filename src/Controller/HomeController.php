@@ -94,7 +94,7 @@ final class HomeController extends AbstractController
 
             $em->persist($postCheck);
             $em->flush();
-
+           
             $bus->dispatch(new AnalyzePostMessage($postCheck->getId()));
 
             return $this->redirectToRoute('app_post_check_show', [

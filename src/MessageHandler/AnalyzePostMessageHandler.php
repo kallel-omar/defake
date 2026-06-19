@@ -27,6 +27,7 @@ final class AnalyzePostMessageHandler
         private readonly ClaimExtractionService $claimExtractionService,
         private readonly InternetEvidenceService $internetEvidenceService,
         private readonly ClaimVerificationService $claimVerificationService
+        
     ) {
     }
 
