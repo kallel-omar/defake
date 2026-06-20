@@ -16,7 +16,6 @@ RUN composer install --no-dev --optimize-autoloader --no-scripts
 
 RUN php bin/console cache:clear --env=prod || true
 
-RUN php bin/console doctrine:migrations:migrate --no-interaction --env=prod || true
-RUN php bin/console messenger:setup-transports --env=prod || true
 
-CMD php -S 0.0.0.0:${PORT:-10000} -t public
+
+CMD php bin/console doctrine:migrations:migrate --no-interaction --env=prod && php bin/console messenger:setup-transports --env=prod && php -S 0.0.0.0:${PORT:-10000} -t public
