@@ -10,7 +10,9 @@ WORKDIR /app
 
 COPY . .
 
-RUN composer install --no-dev --optimize-autoloader
+ENV APP_ENV=prod
+
+RUN composer install --no-dev --optimize-autoloader --no-scripts
 
 RUN php bin/console cache:clear --env=prod || true
 
