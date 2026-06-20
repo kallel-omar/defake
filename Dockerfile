@@ -18,4 +18,4 @@ RUN php bin/console cache:clear --env=prod || true
 
 
 
-CMD php bin/console doctrine:migrations:migrate --no-interaction --env=prod && php bin/console messenger:setup-transports --env=prod && php -S 0.0.0.0:${PORT:-10000} -t public
+CMD php -S 0.0.0.0:${PORT:-10000} -t public
