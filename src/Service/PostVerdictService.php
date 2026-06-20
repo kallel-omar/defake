@@ -1,7 +1,19 @@
 <?php
 
 namespace App\Service;
-
+/**
+ * Reserved for the future claim-based verification system.
+ *
+ * Planned flow:
+ * Post
+ * → Claim Extraction
+ * → Claim Verification
+ * → PostVerdictService
+ * → Final Verdict
+ *
+ * Currently unused because DeFake uses PostAnalysisService
+ * for full-post analysis.
+ */
 class PostVerdictService
 {
     public function calculate(array $claimResults): array
