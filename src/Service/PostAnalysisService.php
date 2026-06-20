@@ -12,19 +12,30 @@ class PostAnalysisService
         private readonly CredibilityEngineService $credibilityEngineService,
         private readonly SourceConfidenceService $sourceConfidenceService,
         private readonly GroqAiService $groqAiService,
-        private readonly OfficialSourceDetectorService $officialSourceDetectorService
+        private readonly OfficialSourceDetectorService $officialSourceDetectorService,
+        private readonly EvidenceDecisionService $evidenceDecisionService,
     ) {
     }
 
     public function analyze(string $url, string $postText, array $sourceContext = []): array
     {
-        $internetEvidence = $this->searchInternetEvidence($postText);
+     $internetEvidenceData = $this->searchInternetEvidence($postText);
+
+$internetEvidence = $internetEvidenceData['text'];
+
+$evidenceItems = $internetEvidenceData['items'];
+
+$evidenceDecision = $this->evidenceDecisionService->decide(
+    $this->extractMainClaim($postText),
+    $evidenceItems
+);
 
         $calculatedSourceScore = $this->credibilityEngineService->calculateSourceScore($internetEvidence);
 
-        $officialSource = $this->officialSourceDetectorService->detect($sourceContext);
+        $officialSource = $this->officialSourceDetectorService->detect($sourceContext, $postText);       
+  
 
-        if ($officialSource['official']) {
+            if ($officialSource['official']) {
             $calculatedSourceScore = 25;
         }
 
@@ -64,11 +75,22 @@ Official Source Detection:
 Official source: $officialText
 Reason: $officialReason
 
+
 Important:
 If the Facebook page is an official organization page and the announcement concerns that organization itself, treat the Facebook page as a primary source.
 
+If the Facebook source is not official, do NOT automatically treat the post as fake.
+A non-official page may still publish a true claim.
+For non-official pages, base the verdict mainly on whether credible internet evidence supports or contradicts the claim.
+If the internet evidence contains multiple credible sources with the same teams, competition, and date, treat the claim as supported.
+
+Do not say the internet evidence contradicts the claim unless at least one credible source explicitly says the claim is false or gives a different date/opponent.
+
+If credible sources confirm the match exists, Evidence Score should be at least 15 and Verification Reason should say the claim is supported by external sources.
+Only mark a post as Likely Fake when credible evidence contradicts the claim, or when a serious factual claim has no reliable support at all.
 Evaluation criteria:
 - Does the post provide evidence?
+- If the source is not official, is the claim still supported by credible external evidence?
 - Do internet results support or contradict the post?
 - Is the Facebook source an official organization page?
 - Is there missing context?
@@ -140,9 +162,23 @@ PROMPT;
             $languageScore
         );
 
-        if ($officialSource['official'] && $verificationScore < 20) {
-            $verificationScore = 20;
-        }
+        if ($evidenceDecision['status'] === 'SUPPORTED') {
+    $evidenceScore = max($evidenceScore, 20);
+    $verificationScore = max($verificationScore, 20);
+
+    $result['evidenceReason'] = $evidenceDecision['reason'];
+    $result['verificationReason'] = 'The main claim is supported by multiple search results.';
+}
+        if ($officialSource['official']) {
+        $result['evidenceReason'] =
+    'This announcement was published directly by the official organization page. The page is treated as a primary source for information concerning its own activities.';
+
+    $result['sourceReason'] = 'The Facebook source appears to be an official organization page. ' . $officialSource['reason'];
+
+    $result['verificationReason'] = 'Because the announcement comes from the official page of the organization concerned, it is treated as directly verifiable from the primary source.';
+
+ $result['explanation'] =
+    'This post was published by the official page of the organization and concerns its own activities. Because the source is primary and directly responsible for the information being announced, the post is considered highly credible unless strong contradictory evidence exists.';}
 
         $finalScore =
             $evidenceScore +
@@ -150,13 +186,13 @@ PROMPT;
             $languageScore +
             $verificationScore;
 
-        if ($finalScore <= 30) {
-            $finalVerdict = 'Likely Fake';
-        } elseif ($finalScore <= 60) {
-            $finalVerdict = 'Suspicious';
-        } else {
-            $finalVerdict = 'Likely Trusted';
-        }
+        if ($finalScore <= 25) {
+    $finalVerdict = 'Likely Fake';
+} elseif ($finalScore <= 50) {
+    $finalVerdict = 'Suspicious';
+} else {
+    $finalVerdict = 'Likely Trusted';
+}
 
         return [
             'score' => $finalScore,
@@ -180,10 +216,9 @@ PROMPT;
 
    
 
-    private function searchInternetEvidence(string $postText): string
+    private function searchInternetEvidence(string $postText): array
     {
         $query = $this->extractMainClaim($postText);
-
         $data = $this->callSerper('news', $query);
         $items = $data['news'] ?? [];
 
@@ -193,8 +228,12 @@ PROMPT;
         }
 
         if (empty($items)) {
-            return 'No internet evidence found.';
-        }
+    return [
+        'text' => 'No internet evidence found.',
+        'items' => [],
+    ];
+}
+        
 
         $results = [];
 
@@ -212,7 +251,10 @@ PROMPT;
   Source Type: {$confidence['label']}";
         }
 
-        return implode("\n\n", $results);
+        return [
+    'text' => implode("\n\n", $results),
+    'items' => $items,
+];
     }
 
     private function callSerper(string $type, string $query): array
@@ -241,8 +283,8 @@ PROMPT;
         $content = $this->groqAiService->ask([
             [
                 'role' => 'system',
-                'content' => 'Extract the single most important factual claim from the text. Return only the claim.',
-            ],
+                 $result['explanation'] =
+'content' => 'Convert the post into ONE concise Google search query. Include all teams/entities, exact dates, competition names, places, and numbers found in the post. Never remove dates. Never return an explanation. Never start with phrases like "Here is". Return only the search query text.',            ],
             [
                 'role' => 'user',
                 'content' => $postText,
