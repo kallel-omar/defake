@@ -169,7 +169,7 @@ PROMPT;
             $official = true;
             $category = 'ministry';
             $confidence = max($confidence, 90);
-            $reason .= ' Auto-corrected because the page name clearly indicates an official government or ministry page.';
+            $reason = 'The Facebook source appears to be an official government ministry page.';
         }
 
         return [
