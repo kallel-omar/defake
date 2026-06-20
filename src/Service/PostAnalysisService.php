@@ -32,7 +32,8 @@ $evidenceDecision = $this->evidenceDecisionService->decide(
 
         $calculatedSourceScore = $this->credibilityEngineService->calculateSourceScore($internetEvidence);
 
-        $officialSource = $this->officialSourceDetectorService->detect($sourceContext, $postText);       
+        $officialSource = $this->officialSourceDetectorService->detect($sourceContext, $postText);  
+        
   
 
             if ($officialSource['official']) {

@@ -9,7 +9,7 @@ class OfficialSourceDetectorService
     ) {
     }
 
-   public function detect(array $sourceContext, string $postText = ''): array
+    public function detect(array $sourceContext, string $postText = ''): array
     {
         if (empty($sourceContext)) {
             return [
@@ -21,6 +21,10 @@ class OfficialSourceDetectorService
         }
 
         $sourceText = json_encode($sourceContext, JSON_UNESCAPED_UNICODE);
+
+        $pageName = strtolower((string) ($sourceContext['pageName'] ?? ''));
+        $userName = strtolower((string) ($sourceContext['userName'] ?? ''));
+        $combinedName = $pageName . ' ' . $userName;
 
         $prompt = <<<PROMPT
 You are helping a fact-checking system evaluate a Facebook source.
@@ -59,25 +63,22 @@ Important:
 - If the page name is exactly or very closely the name of a club, company, ministry, federation, or organization, and the post concerns that same entity, it can be official.
 - If uncertain, return false.
 
-Examples:
-- "Espérance Sportive de Tunis" posting about an Espérance player signing = official true, category club
-- "Fédération Tunisienne de Football" posting about national team or federation decisions = official true, category federation
-- "Ministère de la Santé" posting about health policy = official true, category ministry
-- "Apple" posting about an Apple product = official true, category company
-- "Taraji News" posting about Espérance = official false, category media
-- "Esperance Fans" posting about Espérance = official false, category fan_page
-- "Tunisie Sport" posting about a club = official false, category media
-- "A journalist page" posting about a ministry = official false, category journalist
+The category field must contain exactly ONE value from this list:
+government, ministry, public_authority, company, club, federation, organization, media, fan_page, journalist, commentary, unknown.
+
+Do not return the full list as the category.
 
 Facebook source context:
 $sourceText
+
 Facebook post text:
 $postText
+
 Return ONLY valid JSON with this exact structure:
 
 {
   "official": false,
-  "category": "government|ministry|public_authority|company|club|federation|organization|media|fan_page|journalist|commentary|unknown",
+  "category": "unknown",
   "confidence": 0,
   "reason": "short reason"
 }
@@ -105,7 +106,7 @@ PROMPT;
 
         $content = trim($content);
         $content = preg_replace('/^```json|```$/m', '', $content);
-        $$content = trim($content);
+        $content = trim($content);
 
         $result = json_decode($content, true);
 
@@ -117,33 +118,65 @@ PROMPT;
                 'reason' => 'The AI source verification returned invalid JSON.',
             ];
         }
+
         $official = (bool) ($result['official'] ?? false);
-$category = (string) ($result['category'] ?? 'unknown');
-$confidence = max(0, min(100, (int) ($result['confidence'] ?? 0)));
-$reason = (string) ($result['reason'] ?? 'No reason provided.');
+        $category = (string) ($result['category'] ?? 'unknown');
+        $confidence = max(0, min(100, (int) ($result['confidence'] ?? 0)));
+        $reason = (string) ($result['reason'] ?? 'No reason provided.');
 
-if (
-    !$official &&
-    in_array($category, ['government', 'ministry', 'public_authority', 'company', 'club', 'federation', 'organization'], true) &&
-    str_contains(strtolower($reason), 'post is about')
-) {
-    $official = true;
-    $confidence = max($confidence, 80);
-    $reason .= ' Auto-corrected because the category is an official-source category and the reason confirms the post concerns the organization itself.';
-}
+        $allowedCategories = [
+            'government',
+            'ministry',
+            'public_authority',
+            'company',
+            'club',
+            'federation',
+            'organization',
+            'media',
+            'fan_page',
+            'journalist',
+            'commentary',
+            'unknown',
+        ];
 
-return [
-    'official' => $official,
-    'category' => $category,
-    'confidence' => $confidence,
-    'reason' => $reason,
-];
+        if (!in_array($category, $allowedCategories, true)) {
+            $category = 'unknown';
+        }
+
+        $reasonLower = strtolower($reason);
+
+        if (
+            !$official &&
+            in_array($category, ['government', 'ministry', 'public_authority', 'company', 'club', 'federation', 'organization'], true) &&
+            str_contains($reasonLower, 'post is about')
+        ) {
+            $official = true;
+            $confidence = max($confidence, 80);
+            $reason .= ' Auto-corrected because the category is an official-source category and the reason confirms the post concerns the organization itself.';
+        }
+
+        if (
+            !$official &&
+            (
+                str_contains($combinedName, 'ministere') ||
+                str_contains($combinedName, 'ministère') ||
+                str_contains($combinedName, 'ministry') ||
+                str_contains($combinedName, 'gouvernement') ||
+                str_contains($combinedName, 'government') ||
+                str_contains($combinedName, 'page officielle')
+            )
+        ) {
+            $official = true;
+            $category = 'ministry';
+            $confidence = max($confidence, 90);
+            $reason .= ' Auto-corrected because the page name clearly indicates an official government or ministry page.';
+        }
 
         return [
-            'official' => (bool) ($result['official'] ?? false),
-            'category' => (string) ($result['category'] ?? 'unknown'),
-            'confidence' => max(0, min(100, (int) ($result['confidence'] ?? 0))),
-            'reason' => (string) ($result['reason'] ?? 'No reason provided.'),
+            'official' => $official,
+            'category' => $category,
+            'confidence' => $confidence,
+            'reason' => $reason,
         ];
     }
 }
