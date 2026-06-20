@@ -32,6 +32,7 @@ when@test:
         dbal:
         url: '%env(resolve:DATABASE_URL)%'
         server_version: '16.0.0'
+        driver: 'pdo_pgsql'
 
 when@prod:
     doctrine:
