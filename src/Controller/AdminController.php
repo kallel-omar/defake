@@ -28,13 +28,7 @@ class AdminController extends AbstractController
             'latestChecks' => $postCheckRepository->findBy([], ['createdAt' => 'DESC'], 20),
         ]);
     }
-    #[Route('/admin/check/{id}', name: 'app_admin_check_show', methods: ['GET'])]
-public function showCheck(PostCheck $postCheck): Response
-{
-    return $this->render('check/show.html.twig', [
-        'postCheck' => $postCheck,
-    ]);
-}
+
 
     #[Route('/admin/check/{id}/delete', name: 'app_admin_check_delete', methods: ['POST'])]
     public function deleteCheck(

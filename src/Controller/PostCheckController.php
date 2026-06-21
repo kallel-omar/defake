@@ -24,7 +24,14 @@ public function show(PostCheck $postCheck): Response
         ]);
     }
 
-    // Logged-in analyses can only be viewed by their owner
+    // Admin can view all analyses
+    if ($this->isGranted('ROLE_ADMIN')) {
+        return $this->render('post_check/show.html.twig', [
+            'postCheck' => $postCheck,
+        ]);
+    }
+
+    // Normal users can only view their own analyses
     if ($owner !== $currentUser) {
         throw $this->createAccessDeniedException('You cannot access this analysis.');
     }
@@ -33,6 +40,7 @@ public function show(PostCheck $postCheck): Response
         'postCheck' => $postCheck,
     ]);
 }
+
 
     #[Route('/check/{id}/delete', name: 'app_post_check_delete', methods: ['POST'])]
     public function delete(PostCheck $postCheck, EntityManagerInterface $em): RedirectResponse
