@@ -23,8 +23,8 @@ services:
             $apifyApiToken: '%apify_api_token%'
 
     App\Service\OfficialSourceDetectorService:
-    arguments:
-        $serperApiKey: '%env(SERPER_API_KEY)%'
+        arguments:
+            $serperApiKey: '%serper_api_key%'
 
     App\Service\GroqAiService:
         arguments:
