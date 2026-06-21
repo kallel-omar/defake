@@ -33,6 +33,7 @@
             <thead>
                 <tr>
                     <th>ID</th>
+                    <th>User</th>
                     <th>URL</th>
                     <th>Status</th>
                     <th>Score</th>
@@ -45,6 +46,13 @@
                 {% for check in latestChecks %}
                     <tr>
                         <td>{{ check.id }}</td>
+                        <td>
+    {% if check.user %}
+        {{ check.user.email }}
+    {% else %}
+        <span class="text-muted">Guest</span>
+    {% endif %}
+</td>
                         <td>
                             <a href="{{ check.url }}" target="_blank" class="text-info">
                                 {{ check.url|slice(0, 60) }}...
