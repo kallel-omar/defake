@@ -38,6 +38,7 @@
                     <th>Score</th>
                     <th>Verdict</th>
                     <th>Date</th>
+                    <th>Action</th>
                 </tr>
             </thead>
             <tbody>
@@ -53,6 +54,19 @@
                         <td>{{ check.score ?? '-' }}</td>
                         <td>{{ check.verdict ?? '-' }}</td>
                         <td>{{ check.createdAt ? check.createdAt|date('Y-m-d H:i') : '-' }}</td>
+                        <td>
+    <form
+        method="post"
+        action="{{ path('app_admin_check_delete', { id: check.id }) }}"
+        onsubmit="return confirm('Are you sure you want to delete this search?');"
+    >
+        <input type="hidden" name="_token" value="{{ csrf_token('delete_check_' ~ check.id) }}">
+
+        <button class="btn btn-sm btn-danger">
+            Delete
+        </button>
+    </form>
+</td>
                     </tr>
                 {% else %}
                     <tr>
