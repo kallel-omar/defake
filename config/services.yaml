@@ -22,6 +22,10 @@ services:
         arguments:
             $apifyApiToken: '%apify_api_token%'
 
+    App\Service\OfficialSourceDetectorService:
+    arguments:
+        $serperApiKey: '%env(SERPER_API_KEY)%'
+
     App\Service\GroqAiService:
         arguments:
             $groqApiKey: '%env(GROQ_API_KEY)%'

@@ -16,17 +16,18 @@ class GroqAiService
     public function ask(array $messages): ?string
     {
         $response = $this->httpClient->request('POST', 'https://api.groq.com/openai/v1/chat/completions', [
-            'headers' => [
-                'Authorization' => 'Bearer ' . $this->groqApiKey,
-                'Content-Type' => 'application/json',
-            ],
-            'json' => [
-                'model' => $this->groqModel,
-                'messages' => $messages,
-                'temperature' => 0,
-            ],
-            'timeout' => 60,
-        ]);
+    'headers' => [
+        'Authorization' => 'Bearer ' . $this->groqApiKey,
+        'Content-Type' => 'application/json',
+    ],
+    'json' => [
+        'model' => $this->groqModel,
+        'messages' => $messages,
+        'temperature' => 0,
+        'max_tokens' => 600,
+    ],
+    'timeout' => 60,
+]);
 
         $data = $response->toArray(false);
 

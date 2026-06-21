@@ -22,6 +22,8 @@ class PostAnalysisService
      $internetEvidenceData = $this->searchInternetEvidence($postText);
 
 $internetEvidence = $internetEvidenceData['text'];
+$postText = $this->limitText($postText, 1500);
+$internetEvidence = $this->limitText($internetEvidence, 2500);
 
 $evidenceItems = $internetEvidenceData['items'];
 
@@ -215,7 +217,16 @@ PROMPT;
         ];
     }
 
-   
+   private function limitText(?string $text, int $maxChars): string
+{
+    $text = trim((string) $text);
+
+    if (mb_strlen($text) <= $maxChars) {
+        return $text;
+    }
+
+    return mb_substr($text, 0, $maxChars) . "\n...[truncated]";
+}
 
     private function searchInternetEvidence(string $postText): array
     {

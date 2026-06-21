@@ -2,92 +2,77 @@
 
 namespace App\Service;
 
+use Symfony\Contracts\HttpClient\HttpClientInterface;
+
 class OfficialSourceDetectorService
 {
     public function __construct(
-        private readonly GroqAiService $groqAiService
+        private readonly GroqAiService $groqAiService,
+        private readonly HttpClientInterface $httpClient,
+        private readonly string $serperApiKey,
     ) {
     }
 
     public function detect(array $sourceContext, string $postText = ''): array
     {
-        if (empty($sourceContext)) {
-            return [
-                'official' => false,
-                'category' => 'unknown',
-                'confidence' => 0,
-                'reason' => 'No source context was available.',
-            ];
+        $pageName = trim((string) ($sourceContext['pageName'] ?? $sourceContext['userName'] ?? ''));
+
+        if ($pageName === '') {
+            return $this->result(false, 'unknown', 0, 'No Facebook page name was available.');
         }
 
-        $sourceText = json_encode($sourceContext, JSON_UNESCAPED_UNICODE);
-
-        $pageName = strtolower((string) ($sourceContext['pageName'] ?? ''));
-        $userName = strtolower((string) ($sourceContext['userName'] ?? ''));
-        $combinedName = $pageName . ' ' . $userName;
+        $googleEvidence = $this->searchOfficialEvidence($pageName);
 
         $prompt = <<<PROMPT
-You are helping a fact-checking system evaluate a Facebook source.
+You are verifying whether a Facebook page is official.
 
-Task:
-Decide if this Facebook source is the OFFICIAL page of the organization itself.
+Facebook page name:
+{$pageName}
 
-Definition of official source:
-Official means the Facebook page belongs to one of these:
-- government institution
-- ministry
-- public authority
-- company
-- sports club
-- federation
-- official organization
+Facebook source context:
+{$this->safeJson($sourceContext)}
 
-Return true ONLY when:
-- the page name clearly represents the organization itself
-- and the post is about that same organization, its own activity, its own announcement, or its own members
+Post text:
+{$postText}
 
-Return false when the page is:
-- news page
-- sports media page
+Google evidence:
+{$googleEvidence}
+
+Decide if this Facebook page is the official page of the organization itself.
+
+Official means:
+- official club page
+- official company page
+- official federation page
+- official ministry page
+- official government/public authority page
+- official organization page
+
+Return true only if Google evidence or page context strongly indicates the page belongs to the organization itself.
+
+Return false if it is:
 - fan page
+- media page
+- news page
 - supporter page
 - journalist page
 - commentary page
-- rumor page
-- page only reporting about another organization
+- unofficial page
 
-Important:
-- A verified badge alone does not mean official.
-- A page can be trusted but still not official.
-- A professional-looking name does not mean official.
-- If the page name is exactly or very closely the name of a club, company, ministry, federation, or organization, and the post concerns that same entity, it can be official.
-- If uncertain, return false.
-
-The category field must contain exactly ONE value from this list:
-government, ministry, public_authority, company, club, federation, organization, media, fan_page, journalist, commentary, unknown.
-
-Do not return the full list as the category.
-
-Facebook source context:
-$sourceText
-
-Facebook post text:
-$postText
-
-Return ONLY valid JSON with this exact structure:
+Return ONLY valid JSON:
 
 {
   "official": false,
   "category": "unknown",
   "confidence": 0,
-  "reason": "short reason"
+  "reason": ""
 }
 PROMPT;
 
         $content = $this->groqAiService->ask([
             [
                 'role' => 'system',
-                'content' => 'Return only valid JSON. No markdown. No explanation outside JSON.',
+                'content' => 'Return only valid JSON. No markdown.',
             ],
             [
                 'role' => 'user',
@@ -96,35 +81,25 @@ PROMPT;
         ]);
 
         if (!$content) {
-            return [
-                'official' => false,
-                'category' => 'unknown',
-                'confidence' => 0,
-                'reason' => 'The AI source verification returned no content.',
-            ];
+            return $this->fallbackDetection($pageName, $googleEvidence);
         }
 
         $content = trim($content);
         $content = preg_replace('/^```json|```$/m', '', $content);
-        $content = trim($content);
+        $content = trim();
 
-        $result = json_decode($content, true);
+        $data = json_decode($content, true);
 
-        if (!is_array($result)) {
-            return [
-                'official' => false,
-                'category' => 'unknown',
-                'confidence' => 0,
-                'reason' => 'The AI source verification returned invalid JSON.',
-            ];
+        if (!is_array($data)) {
+            return $this->fallbackDetection($pageName, $googleEvidence);
         }
 
-        $official = (bool) ($result['official'] ?? false);
-        $category = (string) ($result['category'] ?? 'unknown');
-        $confidence = max(0, min(100, (int) ($result['confidence'] ?? 0)));
-        $reason = (string) ($result['reason'] ?? 'No reason provided.');
+        $official = (bool) ($data['official'] ?? false);
+        $category = (string) ($data['category'] ?? 'unknown');
+        $confidence = max(0, min(100, (int) ($data['confidence'] ?? 0)));
+        $reason = (string) ($data['reason'] ?? 'No reason provided.');
 
-        $allowedCategories = [
+        $allowed = [
             'government',
             'ministry',
             'public_authority',
@@ -139,39 +114,94 @@ PROMPT;
             'unknown',
         ];
 
-        if (!in_array($category, $allowedCategories, true)) {
+        if (!in_array($category, $allowed, true)) {
             $category = 'unknown';
         }
 
-        $reasonLower = strtolower($reason);
+        return $this->result($official, $category, $confidence, $reason);
+    }
 
-        if (
-            !$official &&
-            in_array($category, ['government', 'ministry', 'public_authority', 'company', 'club', 'federation', 'organization'], true) &&
-            str_contains($reasonLower, 'post is about')
-        ) {
-            $official = true;
-            $confidence = max($confidence, 80);
-            $reason .= ' Auto-corrected because the category is an official-source category and the reason confirms the post concerns the organization itself.';
+    private function searchOfficialEvidence(string $pageName): string
+    {
+        $query = $pageName . ' official Facebook page site:facebook.com OR official website';
+
+        $response = $this->httpClient->request('POST', 'https://google.serper.dev/search', [
+            'headers' => [
+                'X-API-KEY' => $this->serperApiKey,
+                'Content-Type' => 'application/json',
+            ],
+            'json' => [
+                'q' => $query,
+                'num' => 5,
+            ],
+            'timeout' => 20,
+        ]);
+
+        $data = $response->toArray(false);
+        $items = $data['organic'] ?? [];
+
+        if (empty($items)) {
+            return 'No Google evidence found.';
         }
 
-        if (
-            !$official &&
-            (
-                str_contains($combinedName, 'ministere') ||
-                str_contains($combinedName, 'ministère') ||
-                str_contains($combinedName, 'ministry') ||
-                str_contains($combinedName, 'gouvernement') ||
-                str_contains($combinedName, 'government') ||
-                str_contains($combinedName, 'page officielle')
-            )
-        ) {
-            $official = true;
-            $category = 'ministry';
-            $confidence = max($confidence, 90);
-            $reason = 'The Facebook source appears to be an official government ministry page.';
+        $results = [];
+
+        foreach (array_slice($items, 0, 5) as $item) {
+            $title = $item['title'] ?? '';
+            $snippet = $item['snippet'] ?? '';
+            $link = $item['link'] ?? '';
+
+            $results[] = "Title: {$title}\nSnippet: {$snippet}\nLink: {$link}";
         }
 
+        return implode("\n\n", $results);
+    }
+
+    private function fallbackDetection(string $pageName, string $googleEvidence): array
+    {
+        $text = strtolower($pageName . ' ' . $googleEvidence);
+
+        $officialWords = [
+            'official',
+            'page officielle',
+            'verified',
+            'club',
+            'federation',
+            'fédération',
+            'ministry',
+            'ministère',
+            'government',
+            'gouvernement',
+            'company',
+            'organization',
+        ];
+
+        foreach ($officialWords as $word) {
+            if (str_contains($text, $word)) {
+                return $this->result(
+                    true,
+                    'organization',
+                    75,
+                    'Google evidence suggests this page may be an official organization page.'
+                );
+            }
+        }
+
+        return $this->result(
+            false,
+            'unknown',
+            40,
+            'The system could not confirm from Google evidence that this is an official page.'
+        );
+    }
+
+    private function safeJson(array $data): string
+    {
+        return json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}';
+    }
+
+    private function result(bool $official, string $category, int $confidence, string $reason): array
+    {
         return [
             'official' => $official,
             'category' => $category,
