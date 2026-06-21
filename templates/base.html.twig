@@ -38,10 +38,11 @@
                 </a>
 
                  {% if is_granted('ROLE_ADMIN') %}
-                <li class="nav-item">
-                    <a class="nav-link" href="{{ path('app_admin') }}">Admin</a>
-                </li>
+                <a href="{{ path('app_admin') }}" class="btn btn-outline-light btn-sm rounded-pill px-3">
+                    Admin
+                </a>
                 {% endif %}
+                
 
                 <a href="{{ path('app_logout') }}"
                    class="btn btn-outline-light btn-sm rounded-pill px-3">
