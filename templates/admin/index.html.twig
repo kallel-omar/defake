@@ -63,6 +63,9 @@
                         <td>{{ check.verdict ?? '-' }}</td>
                         <td>{{ check.createdAt ? check.createdAt|date('Y-m-d H:i') : '-' }}</td>
                         <td>
+                        <a href="{{ path('app_admin_check_show', { id: check.id }) }}" class="btn btn-sm btn-info">
+    Details
+</a>
     <form
         method="post"
         action="{{ path('app_admin_check_delete', { id: check.id }) }}"
