@@ -12,33 +12,55 @@ class PostAnalysisService
         private readonly CredibilityEngineService $credibilityEngineService,
         private readonly SourceConfidenceService $sourceConfidenceService,
         private readonly GroqAiService $groqAiService,
+        private readonly GeminiAiService $geminiAiService,
         private readonly OfficialSourceDetectorService $officialSourceDetectorService,
         private readonly EvidenceDecisionService $evidenceDecisionService,
+        private readonly ClaimExtractionService $claimExtractionService,
     ) {
     }
 
     public function analyze(string $url, string $postText, array $sourceContext = []): array
     {
-     $internetEvidenceData = $this->searchInternetEvidence($postText);
+        $claims = $this->claimExtractionService->extract($postText);
+$mainClaim = trim((string) ($claims[0] ?? ''));
 
-$internetEvidence = $internetEvidenceData['text'];
-$postText = $this->limitText($postText, 1500);
-$internetEvidence = $this->limitText($internetEvidence, 2500);
+if ($mainClaim === '' || $mainClaim === 'NO_VERIFIABLE_CLAIM') {
+    return [
+        'score' => 0,
+        'verdict' => 'NOT_VERIFIABLE',
+        'mainClaim' => null,
+        'evidenceSources' => [],
+        'evidenceScore' => 0,
+        'sourceScore' => 0,
+        'languageScore' => 0,
+        'verificationScore' => 0,
+        'evidenceReason' => 'No evidence search was performed because no clear factual claim was detected.',
+        'sourceReason' => 'Source analysis was skipped because the post is not a factual news claim.',
+        'languageReason' => 'The post appears to be opinion, insult, sarcasm, or emotional commentary.',
+        'verificationReason' => 'Verification was skipped because there is no specific factual claim to check.',
+        'explanation' => 'This post does not contain a clear verifiable factual claim. It appears to be opinion, insult, sarcasm, or emotional commentary rather than news.',
+    ];
+}
 
-$evidenceItems = $internetEvidenceData['items'];
+$internetEvidenceData = $this->searchInternetEvidence($mainClaim);
 
-$evidenceDecision = $this->evidenceDecisionService->decide(
-    $this->extractMainClaim($postText),
-    $evidenceItems
-);
+
+        $internetEvidence = $internetEvidenceData['text'];
+        $evidenceItems = $internetEvidenceData['items'];
+
+        $postText = $this->limitText($postText, 1500);
+        $internetEvidence = $this->limitText($internetEvidence, 2500);
+
+        $evidenceDecision = $this->evidenceDecisionService->decide(
+            $mainClaim,
+            $evidenceItems
+        );
 
         $calculatedSourceScore = $this->credibilityEngineService->calculateSourceScore($internetEvidence);
 
-        $officialSource = $this->officialSourceDetectorService->detect($sourceContext, $postText);  
-        
-  
+        $officialSource = $this->officialSourceDetectorService->detect($sourceContext, $postText);
 
-            if ($officialSource['official']) {
+        if ($officialSource['official']) {
             $calculatedSourceScore = 25;
         }
 
@@ -78,19 +100,23 @@ Official Source Detection:
 Official source: $officialText
 Reason: $officialReason
 
-
 Important:
 If the Facebook page is an official organization page and the announcement concerns that organization itself, treat the Facebook page as a primary source.
 
 If the Facebook source is not official, do NOT automatically treat the post as fake.
 A non-official page may still publish a true claim.
 For non-official pages, base the verdict mainly on whether credible internet evidence supports or contradicts the claim.
-If the internet evidence contains multiple credible sources with the same teams, competition, and date, treat the claim as supported.
+If the internet evidence contains credible sources confirming the same factual claim, treat the claim as supported.
 
-Do not say the internet evidence contradicts the claim unless at least one credible source explicitly says the claim is false or gives a different date/opponent.
+Do not say the internet evidence contradicts the claim unless at least one credible source explicitly says the claim is false or gives different facts.
 
-If credible sources confirm the match exists, Evidence Score should be at least 15 and Verification Reason should say the claim is supported by external sources.
+A source is relevant only if it confirms the same event, action, entities, date, number, location, or decision mentioned in the claim.
+
+Do not treat loosely related sources as support.
+Same topic, same organization, or same country is not enough.
+
 Only mark a post as Likely Fake when credible evidence contradicts the claim, or when a serious factual claim has no reliable support at all.
+
 Evaluation criteria:
 - Does the post provide evidence?
 - If the source is not official, is the claim still supported by credible external evidence?
@@ -109,10 +135,16 @@ Evidence Score:
 0 = no evidence
 
 Language Score:
-25 = neutral, factual language
+25 = neutral, factual, clear language
+20 = mostly neutral and informative
 15 = somewhat emotional or persuasive
-5 = highly emotional, manipulative, biased, or conspiratorial
-0 = extreme manipulation, propaganda, or inflammatory language
+5 = highly emotional, manipulative, biased, insulting, or conspiratorial
+0 = extreme manipulation, propaganda, hate, or inflammatory language
+
+Important:
+The languageScore must match the languageReason.
+If the languageReason says the post is neutral or factual, never give languageScore 0.
+If the post is neutral and factual, languageScore should be between 20 and 25.
 
 Return ONLY valid JSON:
 
@@ -127,33 +159,54 @@ Return ONLY valid JSON:
 }
 PROMPT;
 
-        $content = $this->groqAiService->ask([
-            [
-                'role' => 'system',
-                'content' => 'You are DeFake, a professional fact-checking AI. Return only valid JSON in English.',
-            ],
-            [
-                'role' => 'user',
-                'content' => $prompt,
-            ],
-        ]);
+       $geminiResult = $this->geminiAiService->analyzeEvidence(
+    $mainClaim,
+    $evidenceItems
+);
 
-        if (!$content) {
-            return $this->failedResult('Groq returned no content.');
-        }
+$result = [
+    'evidenceScore' => match ($geminiResult['verdict'] ?? 'NOT_ENOUGH_EVIDENCE') {
+        'TRUE' => 25,
+        'MISLEADING' => 15,
+        'FALSE' => 5,
+        default => 5,
+    },
+    'languageScore' => 20,
+    'evidenceReason' => $geminiResult['explanation'] ?? 'Gemini analyzed the available evidence.',
+    'sourceReason' => $officialReason,
+    'languageReason' => 'Language analysis was kept neutral because Gemini was used mainly for evidence verification.',
+    'verificationReason' => $geminiResult['explanation'] ?? 'Gemini completed the evidence verification.',
+    'explanation' => $geminiResult['explanation'] ?? 'Gemini completed the credibility analysis.',
+];
+$evidenceScore = max(0, min(25, (int) ($result['evidenceScore'] ?? 0)));
+$languageScore = max(0, min(25, (int) ($result['languageScore'] ?? 0)));
 
-        $content = trim($content);
-        $content = preg_replace('/^```json|```$/m', '', $content);
-        $content = trim($content);
+$languageReason = mb_strtolower((string) ($result['languageReason'] ?? ''));
 
-        $result = json_decode($content, true);
+if (
+    $languageScore < 15 &&
+    (
+        str_contains($languageReason, 'neutral') ||
+        str_contains($languageReason, 'factual') ||
+        str_contains($languageReason, 'clear') ||
+        str_contains($languageReason, 'informative')
+    )
+) {
+    $languageScore = 20;
+}
 
-        if (!is_array($result)) {
-            return $this->failedResult($content);
-        }
-
-        $evidenceScore = max(0, min(25, (int) ($result['evidenceScore'] ?? 0)));
-        $languageScore = max(0, min(25, (int) ($result['languageScore'] ?? 0)));
+if (
+    $languageScore > 10 &&
+    (
+        str_contains($languageReason, 'manipulative') ||
+        str_contains($languageReason, 'inflammatory') ||
+        str_contains($languageReason, 'propaganda') ||
+        str_contains($languageReason, 'insult') ||
+        str_contains($languageReason, 'highly emotional')
+    )
+) {
+    $languageScore = 5;
+}
 
         if ($officialSource['official'] && $evidenceScore < 20) {
             $evidenceScore = 20;
@@ -165,41 +218,127 @@ PROMPT;
             $languageScore
         );
 
-        if ($evidenceDecision['status'] === 'SUPPORTED') {
+       if ($evidenceDecision['status'] === 'SUPPORTED') {
     $evidenceScore = max($evidenceScore, 20);
     $verificationScore = max($verificationScore, 20);
 
     $result['evidenceReason'] = $evidenceDecision['reason'];
-    $result['verificationReason'] = 'The main claim is supported by multiple search results.';
+    $result['verificationReason'] = 'The main claim is supported by relevant external sources.';
 }
-        if ($officialSource['official']) {
-        $result['evidenceReason'] =
-    'This announcement was published directly by the official organization page. The page is treated as a primary source for information concerning its own activities.';
 
-    $result['sourceReason'] = 'The Facebook source appears to be an official organization page. ' . $officialSource['reason'];
+if ($evidenceDecision['status'] === 'PARTIALLY_SUPPORTED') {
+    $evidenceScore = min($evidenceScore, 15);
+    $verificationScore = min($verificationScore, 10);
 
-    $result['verificationReason'] = 'Because the announcement comes from the official page of the organization concerned, it is treated as directly verifiable from the primary source.';
+    $result['evidenceReason'] = $evidenceDecision['reason'];
+    $result['verificationReason'] = 'The evidence is related, but it does not fully confirm the specific claim.';
+    $result['explanation'] = 'DeFake found some related sources, but they do not fully confirm the specific claim. The post should be treated with caution until a directly relevant source confirms it.';
+}
 
- $result['explanation'] =
-    'This post was published by the official page of the organization and concerns its own activities. Because the source is primary and directly responsible for the information being announced, the post is considered highly credible unless strong contradictory evidence exists.';}
+if (in_array($evidenceDecision['status'], ['UNSUPPORTED', 'UNRELATED'], true)) {
+    $evidenceScore = min($evidenceScore, 10);
+    $verificationScore = min($verificationScore, 8);
+
+    $result['evidenceReason'] = $evidenceDecision['reason'];
+    $result['verificationReason'] = 'The available sources do not confirm the specific claim.';
+    $result['explanation'] = 'DeFake could not find relevant sources confirming the specific claim. Related or trusted sources may exist, but they do not verify this exact claim.';
+}
+
+if ($evidenceDecision['status'] === 'CONTRADICTED') {
+    $evidenceScore = min($evidenceScore, 5);
+    $verificationScore = min($verificationScore, 5);
+
+    $result['evidenceReason'] = $evidenceDecision['reason'];
+    $result['verificationReason'] = 'The available evidence appears to contradict the claim.';
+    $result['explanation'] = 'DeFake found evidence that appears to contradict the claim. The post is therefore considered high risk unless stronger evidence proves otherwise.';
+}
+
+       $officialCategory = $officialSource['category'] ?? 'unknown';
+$officialConfidence = (int) ($officialSource['confidence'] ?? 0);
+
+$isStrongPrimarySource =
+    $officialSource['official']
+    && $officialConfidence >= 85
+    && in_array($officialCategory, [
+        'government',
+        'ministry',
+        'public_authority',
+        'company',
+        'club',
+        'federation',
+        'organization',
+    ], true);
+
+if (
+    $isStrongPrimarySource &&
+    $evidenceDecision['status'] !== 'CONTRADICTED'
+) {
+    $evidenceScore = max($evidenceScore, 25);
+    $calculatedSourceScore = 25;
+    $verificationScore = max($verificationScore, 25);
+
+    $result['evidenceReason'] = 'The post appears to come from a strongly verified official source, so the page itself can be treated as primary evidence for its own announcement.';
+
+    $result['sourceReason'] = 'The Facebook source appears to be a strongly verified official organization page. ' . $officialSource['reason'];
+
+    $result['verificationReason'] = 'Because the announcement appears to come from a strongly verified official page of the organization concerned, it is treated as directly verifiable unless strong contradictory evidence exists.';
+
+    $result['explanation'] = 'This post appears to come from a strongly verified official source and concerns the organization’s own activity. It is considered credible unless reliable contradictory evidence is found.';
+}
 
         $finalScore =
             $evidenceScore +
             $calculatedSourceScore +
             $languageScore +
             $verificationScore;
+            if ($evidenceDecision['status'] === 'CONTRADICTED') {
+    $finalScore = min($finalScore, 25);
+}
+
+if (
+    !$isStrongPrimarySource &&
+    in_array($evidenceDecision['status'], ['UNSUPPORTED', 'UNRELATED'], true)
+) {
+    $finalScore = min($finalScore, 50);
+}
+
+if (
+    !$isStrongPrimarySource &&
+    $evidenceDecision['status'] === 'PARTIALLY_SUPPORTED'
+) {
+    $finalScore = min($finalScore, 50);
+}
 
         if ($finalScore <= 25) {
-    $finalVerdict = 'Likely Fake';
-} elseif ($finalScore <= 50) {
-    $finalVerdict = 'Suspicious';
-} else {
-    $finalVerdict = 'Likely Trusted';
+            $finalVerdict = 'Likely Fake';
+        } elseif ($finalScore <= 50) {
+            $finalVerdict = 'Suspicious';
+        } else {
+            $finalVerdict = 'Likely Trusted';
+        }
+        if (
+    $officialSource['official']
+    && $finalVerdict === 'Likely Trusted'
+    && $evidenceDecision['status'] !== 'CONTRADICTED'
+) {
+    $result['explanation'] = 'This post appears to come from an official source and concerns the organization’s own activity. It is considered credible unless reliable contradictory evidence is found.';
+
+    $result['verificationReason'] = 'Because the announcement appears to come from an official page of the organization concerned, it is treated as directly verifiable unless strong contradictory evidence exists.';
+
+    $result['evidenceReason'] = 'The Facebook page itself can be treated as primary evidence for its own announcement.';
+
+    $result['sourceReason'] = 'The Facebook source appears to be an official organization page. ' . $officialReason;
 }
 
         return [
             'score' => $finalScore,
             'verdict' => $finalVerdict,
+            'mainClaim' => $mainClaim,
+            'evidenceSources' => $this->formatEvidenceSources(
+    $evidenceItems,
+    $mainClaim,
+    $evidenceDecision['relevantIndexes'] ?? []
+),
 
             'evidenceScore' => $evidenceScore,
             'sourceScore' => $calculatedSourceScore,
@@ -217,57 +356,56 @@ PROMPT;
         ];
     }
 
-   private function limitText(?string $text, int $maxChars): string
-{
-    $text = trim((string) $text);
-
-    if (mb_strlen($text) <= $maxChars) {
-        return $text;
-    }
-
-    return mb_substr($text, 0, $maxChars) . "\n...[truncated]";
-}
-
-    private function searchInternetEvidence(string $postText): array
+    private function limitText(?string $text, int $maxChars): string
     {
-        $query = $this->extractMainClaim($postText);
-        $data = $this->callSerper('news', $query);
-        $items = $data['news'] ?? [];
+        $text = trim((string) $text);
 
-        if (empty($items)) {
-            $data = $this->callSerper('search', $query);
-            $items = $data['organic'] ?? [];
+        if (mb_strlen($text) <= $maxChars) {
+            return $text;
         }
 
-        if (empty($items)) {
-    return [
-        'text' => 'No internet evidence found.',
-        'items' => [],
-    ];
-}
-        
+        return mb_substr($text, 0, $maxChars) . "\n...[truncated]";
+    }
 
-        $results = [];
+    private function searchInternetEvidence(string $postText): array
+{
+    $query = $postText;
+    $data = $this->callSerper('news', $query);
+    $items = $data['news'] ?? [];
 
-        foreach (array_slice($items, 0, 5) as $item) {
-            $title = $item['title'] ?? 'No title';
-            $snippet = $item['snippet'] ?? 'No snippet';
-            $link = $item['link'] ?? 'No link';
+    if (empty($items)) {
+        $data = $this->callSerper('search', $query);
+        $items = $data['organic'] ?? [];
+    }
 
-            $confidence = $this->sourceConfidenceService->score($link);
+    if (empty($items)) {
+        return [
+            'text' => 'No internet evidence found.',
+            'items' => [],
+        ];
+    }
 
-            $results[] = "- Title: {$title}
+    $results = [];
+
+    foreach (array_slice($items, 0, 5) as $item) {
+        $title = $item['title'] ?? 'No title';
+        $snippet = $item['snippet'] ?? 'No snippet';
+        $link = $item['link'] ?? 'No link';
+
+        $confidence = $this->sourceConfidenceService->score($link);
+
+        $results[] = "- Title: {$title}
   Snippet: {$snippet}
   Link: {$link}
   Source Confidence: {$confidence['score']}/100
   Source Type: {$confidence['label']}";
-        }
-
-        return [
-    'text' => implode("\n\n", $results),
-    'items' => $items,
-];
     }
+
+    return [
+        'text' => implode("\n\n", $results),
+        'items' => $items,
+    ];
+}
 
     private function callSerper(string $type, string $query): array
     {
@@ -290,31 +428,73 @@ PROMPT;
         return $response->toArray(false);
     }
 
-    private function extractMainClaim(string $postText): string
-    {
-        $content = $this->groqAiService->ask([
-            [
-                'role' => 'system',
-                 $result['explanation'] =
-'content' => 'Convert the post into ONE concise Google search query. Include all teams/entities, exact dates, competition names, places, and numbers found in the post. Never remove dates. Never return an explanation. Never start with phrases like "Here is". Return only the search query text.',            ],
-            [
-                'role' => 'user',
-                'content' => $postText,
-            ],
-        ]);
+    
 
-        if (!$content) {
-            return $postText;
-        }
+private function formatEvidenceSources(array $items, ?string $claim = null, array $relevantIndexes = []): array
+{
+    $sources = [];
 
-        return trim($content);
+    $relevantIndexes = array_values(array_unique(array_map('intval', $relevantIndexes)));
+
+if (empty($relevantIndexes)) {
+    return [];
+}
+
+foreach (array_slice($items, 0, 5, true) as $index => $item) {
+    if (!in_array((int) $index, $relevantIndexes, true)) {
+        continue;
     }
 
+        $link = $item['link'] ?? null;
+
+        if (!$link) {
+            continue;
+        }
+
+        $title = $item['title'] ?? 'No title';
+        $snippet = $item['snippet'] ?? '';
+        $sourceName = $item['source'] ?? parse_url($link, PHP_URL_HOST);
+
+        $confidence = $this->sourceConfidenceService->score($link);
+
+        $officialDecision = $this->officialSourceDetectorService->evaluateEvidenceUrl(
+            $link,
+            $title,
+            $snippet,
+            $claim ?? ''
+        );
+
+        if (($confidence['type'] ?? 'unknown') === 'social') {
+            if (!$officialDecision['official'] || ($officialDecision['confidence'] ?? 0) < 65) {
+                continue;
+            }
+        } else {
+            if (($confidence['score'] ?? 0) < 60) {
+                continue;
+            }
+        }
+
+        $sources[] = [
+            'title' => $title,
+            'link' => $link,
+            'snippet' => $snippet,
+            'source' => $sourceName,
+            'confidenceScore' => $confidence['score'] ?? 0,
+            'confidenceLabel' => $confidence['label'] ?? 'Unknown',
+            'officialCategory' => $officialDecision['category'] ?? 'unknown',
+            'officialConfidence' => $officialDecision['confidence'] ?? 0,
+            'officialReason' => $officialDecision['reason'] ?? '',
+        ];
+    }
+
+    return $sources;
+}
     private function failedResult(string $explanation): array
     {
         return [
             'score' => 0,
             'verdict' => 'Analysis Failed',
+            'evidenceSources' => [],
             'evidenceScore' => 0,
             'sourceScore' => 0,
             'languageScore' => 0,
@@ -324,6 +504,7 @@ PROMPT;
             'languageReason' => '',
             'verificationReason' => '',
             'explanation' => $explanation,
+            'mainClaim' => null,
         ];
     }
 }

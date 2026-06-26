@@ -5,22 +5,22 @@ namespace App\Service;
 class PostClassifierService
 {
     public function __construct(
-        private readonly GroqAiService $groqAiService
+       private readonly GeminiAiService $geminiAiService
     ) {
     }
 
     public function classify(string $postText): array
     {
-        $prompt = <<<PROMPT
+       $prompt = <<<PROMPT
 You are a Facebook post classifier for a fake news detection app.
 
-Your job is to decide if the post contains a verifiable factual claim.
+Your job is to decide if the post contains a clearly verifiable factual claim.
 
 Return JSON only with this format:
 
 {
-  "containsClaim": true,
-  "type": "news",
+  "containsClaim": false,
+  "type": "opinion",
   "title": "Short classification title",
   "summary": "One or two sentence summary of the post",
   "confidence": 90,
@@ -35,29 +35,36 @@ Allowed types:
 - question
 - satire
 - rumor
+- insult
+- sports_banter
+- political_commentary
 - mixed
 - unknown
 
-Rules:
-- Opinion posts are not fake news.
-- Personal feelings are not fake news.
-- Questions are not fake news unless they include a factual claim.
-- Rumors or accusations can be verifiable.
-- Mixed posts should contain factual claim = true.
+Important dialect rules:
+- The post may be in Tunisian Arabic, Maghrebi Arabic, Arabic, French, or mixed language.
+- Do not translate Tunisian slang, insults, sarcasm, or metaphors literally.
+- Words like "طحين", "طحانة", "بارازيت", "بني كرغول" may be used as insults or political/sports slang, not literal factual claims.
+- If the post mainly insults, mocks, attacks, or expresses anger without a specific checkable event, number, date, person action, official decision, transfer, match, law, death, arrest, or announcement, set containsClaim to false.
+- Do not invent missing context.
+- Do not convert insults into factual claims.
 
-- If the post contains at least one factual statement that can be checked, set containsClaim to true.
-- A post can be personal or casual and still contain a verifiable factual claim.
-- Do not reject a post only because it is about sports, clubs, celebrations, family, or public events.
-- If uncertain, prefer containsClaim = true and type = mixed.
+Claim rules:
+- containsClaim must be true only if there is a specific factual claim that can be checked with sources.
+- Rumors or accusations can be verifiable only if they mention a specific event, person, organization, decision, date, number, transfer, score, arrest, death, statement, or official action.
+- Mixed posts should containClaim = true only when they include at least one specific checkable factual claim.
+- If uncertain, prefer containsClaim = false.
 
-- The title must describe what the post is about.
-- The summary must explain the content clearly for a normal user.
+Title and summary rules:
+- If the post is mainly insult/opinion, title should say that clearly.
+- Summary should not reinterpret slang literally.
+- Summary should explain that the post is insulting/critical/emotional commentary if no factual claim exists.
 
 Facebook post:
 """$postText"""
 PROMPT;
 
-        $content = $this->groqAiService->ask([
+        $content = $this->geminiAiService->ask([
             [
                 'role' => 'system',
                 'content' => 'You are a strict JSON classifier. Return only valid JSON. No markdown.',

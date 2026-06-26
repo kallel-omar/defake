@@ -28,6 +28,7 @@ final class HomeController extends AbstractController
             $user = $this->getUser();
             $currentUser = $user instanceof User ? $user : null;
             $ip = $request->getClientIp() ?? 'anonymous';
+            $isAdmin = $this->isGranted('ROLE_ADMIN');
 
             $url = trim((string) $request->request->get('url'));
             $postText = trim((string) $request->request->get('post_text'));
@@ -58,7 +59,7 @@ final class HomeController extends AbstractController
                 ]);
             }
 
-            if (!$analysisUsageLimiter->canAnalyze($currentUser, $ip)) {
+            if (!$isAdmin && !$analysisUsageLimiter->canAnalyze($currentUser, $ip)) {
                 if ($currentUser) {
                     $this->addFlash(
                         'error',
@@ -88,7 +89,9 @@ final class HomeController extends AbstractController
             $postCheck->setCreatedAt(new \DateTimeImmutable());
 
             $em->persist($postCheck);
-            $analysisUsageLimiter->registerUsage($currentUser, $ip);
+            if (!$isAdmin) {
+    $analysisUsageLimiter->registerUsage($currentUser, $ip);
+}
             $em->flush();
 
             $bus->dispatch(new AnalyzePostMessage($postCheck->getId()));

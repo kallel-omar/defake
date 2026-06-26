@@ -81,6 +81,12 @@ class PostCheck
     #[ORM\Column(length: 255, nullable: true)]
     private ?string $processingStep = null;
 
+    #[ORM\Column(nullable: true)]
+    private ?array $evidenceSources = null;
+
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $mainClaim = null;
+
     public function getId(): ?int
     {
         return $this->id;
@@ -348,6 +354,30 @@ public function getProcessingStep(): ?string
 public function setProcessingStep(?string $processingStep): static
 {
     $this->processingStep = $processingStep;
+
+    return $this;
+}
+
+public function getEvidenceSources(): ?array
+{
+    return $this->evidenceSources;
+}
+
+public function setEvidenceSources(?array $evidenceSources): static
+{
+    $this->evidenceSources = $evidenceSources;
+
+    return $this;
+}
+
+public function getMainClaim(): ?string
+{
+    return $this->mainClaim;
+}
+
+public function setMainClaim(?string $mainClaim): static
+{
+    $this->mainClaim = $mainClaim;
 
     return $this;
 }

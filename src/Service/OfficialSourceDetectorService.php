@@ -23,8 +23,8 @@ class OfficialSourceDetectorService
     ];
 
     public function __construct(
-        private readonly GroqAiService $groqAiService,
         private readonly HttpClientInterface $httpClient,
+        private readonly GeminiAiService $geminiAiService,
         private readonly string $serperApiKey,
     ) {
     }
@@ -44,41 +44,40 @@ class OfficialSourceDetectorService
 
         $googleEvidence = $this->searchOfficialEvidence($pageName);
 
-        $prompt = $this->buildPrompt(
+        $prompt = $this->buildOfficialPagePrompt(
             $pageName,
             $sourceContext,
             $postText,
             $googleEvidence
         );
 
-        $content = $this->groqAiService->ask([
-            [
-                'role' => 'system',
-                'content' => 'You verify whether a Facebook page is official. Return only valid JSON. No markdown.',
-            ],
-            [
-                'role' => 'user',
-                'content' => $prompt,
-            ],
-        ]);
+        $data = $this->geminiAiService->askJson($prompt, 1000);
 
-        if (!$content) {
-            return $this->fallbackDetection($pageName, $googleEvidence);
-        }
-
-        $data = $this->decodeJson($content);
-
-        if (!is_array($data)) {
+        if (empty($data)) {
             return $this->fallbackDetection($pageName, $googleEvidence);
         }
 
         $official = (bool) ($data['official'] ?? false);
         $category = $this->normalizeCategory((string) ($data['category'] ?? 'unknown'));
-        $confidence = max(0, min(100, (int) ($data['confidence'] ?? 0)));
-        $reason = trim((string) ($data['reason'] ?? 'No reason provided.'));
+        $confidence = $this->normalizeConfidence($data['confidence'] ?? 0);
+        $reason = trim((string) ($data['reason'] ?? 'No reason provided.')) ?: 'No reason provided.';
 
-        if ($reason === '') {
-            $reason = 'No reason provided.';
+        $nonOfficialCategories = [
+            'media',
+            'fan_page',
+            'journalist',
+            'commentary',
+            'unknown',
+        ];
+
+        if (in_array($category, $nonOfficialCategories, true)) {
+            $official = false;
+            $reason .= ' The detected category is not treated as an official organization source.';
+        }
+
+        if ($official && $confidence < 75) {
+            $official = false;
+            $reason .= ' Confidence is too low to treat this page as official.';
         }
 
         return $this->result(
@@ -87,6 +86,170 @@ class OfficialSourceDetectorService
             $confidence,
             $reason
         );
+    }
+
+    public function evaluateEvidenceUrl(
+        string $url,
+        string $title = '',
+        string $snippet = '',
+        string $claim = ''
+    ): array {
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+
+        if ($host === '') {
+            return $this->result(
+                false,
+                'unknown',
+                0,
+                'Invalid evidence URL.'
+            );
+        }
+
+        if (!$this->isSocialEvidenceHost($host)) {
+            return $this->result(
+                true,
+                'organization',
+                60,
+                'This is a website source. Trust level should be decided by the source confidence engine.'
+            );
+        }
+
+        $prompt = $this->buildEvidenceUrlPrompt($url, $title, $snippet, $claim);
+
+        $data = $this->geminiAiService->askJson($prompt, 800);
+
+        if (empty($data)) {
+            return $this->result(
+                false,
+                'unknown',
+                40,
+                'Could not verify whether this social media source is official or trusted.'
+            );
+        }
+
+        return $this->result(
+            (bool) ($data['official'] ?? false),
+            $this->normalizeCategory((string) ($data['category'] ?? 'unknown')),
+            $this->normalizeConfidence($data['confidence'] ?? 0),
+            trim((string) ($data['reason'] ?? 'No reason provided.')) ?: 'No reason provided.'
+        );
+    }
+
+    private function buildOfficialPagePrompt(
+        string $pageName,
+        array $sourceContext,
+        string $postText,
+        string $googleEvidence
+    ): string {
+        $sourceJson = $this->safeJson($sourceContext);
+
+        return <<<PROMPT
+You are DeFake's official-source detector.
+
+Decide if this Facebook page is the OFFICIAL page of the organization itself.
+
+Facebook page name:
+{$pageName}
+
+Facebook source context:
+{$sourceJson}
+
+Post text:
+{$postText}
+
+Google evidence:
+{$googleEvidence}
+
+Official means the page belongs directly to:
+- a sports club
+- a company
+- a ministry
+- a government or public authority
+- a federation
+- an official organization
+
+Return official=true only if there is strong evidence that the page itself is controlled by the organization.
+
+Important:
+- A page name matching a famous club, company, ministry, person, or organization is NOT enough.
+- A verified badge alone is NOT enough.
+- A media/news page reporting about a club is not official.
+- A fan/supporter page is not official.
+- If the page is only talking ABOUT the organization, return false.
+- If uncertain, return false.
+- If Google evidence contains "official page", "page officielle", "official website", or "site officiel", this strongly supports official=true.
+- The post must concern the organization’s own activity, announcement, members, services, or decisions.
+
+Return ONLY valid JSON:
+
+{
+  "official": false,
+  "category": "unknown",
+  "confidence": 0,
+  "reason": "short reason"
+}
+
+Allowed categories:
+government, ministry, public_authority, company, club, federation, organization, media, fan_page, journalist, commentary, unknown
+PROMPT;
+    }
+
+    private function buildEvidenceUrlPrompt(
+        string $url,
+        string $title,
+        string $snippet,
+        string $claim
+    ): string {
+        return <<<PROMPT
+Decide whether this social media evidence source is official or trusted.
+
+Evidence URL:
+{$url}
+
+Evidence title:
+{$title}
+
+Evidence snippet:
+{$snippet}
+
+Claim being checked:
+{$claim}
+
+Official or trusted means the source appears to belong to:
+- an official club
+- a federation
+- a government or ministry
+- a company
+- a public authority
+- an official organization
+- a trusted media organization
+
+Return false if the source appears to be:
+- random user
+- fan page
+- supporter page
+- commentary page
+- meme page
+- rumor page
+- personal account
+- unknown social media account
+
+Important:
+- Do not trust a social media source only because it contains the name of a famous club, company, person, or organization.
+- If uncertain, return false.
+
+Return ONLY valid JSON:
+
+{
+  "official": false,
+  "category": "unknown",
+  "confidence": 0,
+  "reason": "short reason"
+}
+
+Allowed categories:
+government, ministry, public_authority, company, club, federation, organization, media, fan_page, journalist, commentary, unknown
+PROMPT;
     }
 
     private function extractPageName(array $sourceContext): string
@@ -112,70 +275,6 @@ class OfficialSourceDetectorService
         return '';
     }
 
-    private function buildPrompt(
-        string $pageName,
-        array $sourceContext,
-        string $postText,
-        string $googleEvidence
-    ): string {
-        $sourceJson = $this->safeJson($sourceContext);
-
-        return <<<PROMPT
-Decide if this Facebook page is the OFFICIAL page of the organization itself.
-
-Facebook page name:
-{$pageName}
-
-Facebook source context:
-{$sourceJson}
-
-Post text:
-{$postText}
-
-Google evidence:
-{$googleEvidence}
-
-Official means the page belongs directly to:
-- a sports club
-- a company
-- a ministry
-- a government or public authority
-- a federation
-- an official organization
-
-Return true only if the page itself appears to belong to the organization, and the post concerns that same organization, its own activity, announcement, members, services, or decisions.
-
-Return false if the page is:
-- fan page
-- supporter page
-- media page
-- news page
-- journalist page
-- commentary page
-- rumor page
-- unofficial page
-
-Important rules:
-- A verified badge alone is not enough.
-- A media/news page reporting about a club is not official.
-- A fan/supporter page is not official.
-- If Google evidence clearly says official page, page officielle, official website, or site officiel, this supports official=true.
-- If uncertain, return false.
-
-Category must be exactly one of:
-government, ministry, public_authority, company, club, federation, organization, media, fan_page, journalist, commentary, unknown
-
-Return only valid JSON with this structure:
-
-{
-  "official": false,
-  "category": "unknown",
-  "confidence": 0,
-  "reason": "short reason"
-}
-PROMPT;
-    }
-
     private function searchOfficialEvidence(string $pageName): string
     {
         if ($this->serperApiKey === '') {
@@ -183,10 +282,7 @@ PROMPT;
         }
 
         $query = sprintf(
-            '"%s" "official Facebook page" OR "%s" "page officielle" OR "%s" "official website" OR "%s" "site officiel"',
-            $pageName,
-            $pageName,
-            $pageName,
+            '%s official Facebook page page officielle official website site officiel',
             $pageName
         );
 
@@ -349,33 +445,15 @@ PROMPT;
         return 'organization';
     }
 
-    private function decodeJson(string $content): ?array
+    private function isSocialEvidenceHost(string $host): bool
     {
-        $content = trim($content);
-
-        $content = preg_replace('/^```json\s*/i', '', $content);
-        $content = preg_replace('/^```\s*/', '', $content);
-        $content = preg_replace('/\s*```$/', '', $content);
-
-        $content = trim($content);
-
-        $data = json_decode($content, true);
-
-        if (is_array($data)) {
-            return $data;
-        }
-
-        $start = strpos($content, '{');
-        $end = strrpos($content, '}');
-
-        if ($start === false || $end === false || $end <= $start) {
-            return null;
-        }
-
-        $json = substr($content, $start, $end - $start + 1);
-        $data = json_decode($json, true);
-
-        return is_array($data) ? $data : null;
+        return str_contains($host, 'facebook.com')
+            || str_contains($host, 'x.com')
+            || str_contains($host, 'twitter.com')
+            || str_contains($host, 'instagram.com')
+            || str_contains($host, 'tiktok.com')
+            || str_contains($host, 'youtube.com')
+            || str_contains($host, 'linkedin.com');
     }
 
     private function normalizeCategory(string $category): string
@@ -387,6 +465,21 @@ PROMPT;
         }
 
         return $category;
+    }
+
+    private function normalizeConfidence(mixed $confidence): int
+    {
+        if (!is_numeric($confidence)) {
+            return 0;
+        }
+
+        $confidence = (float) $confidence;
+
+        if ($confidence > 0 && $confidence <= 1) {
+            $confidence *= 100;
+        }
+
+        return max(0, min(100, (int) round($confidence)));
     }
 
     private function safeJson(array $data): string

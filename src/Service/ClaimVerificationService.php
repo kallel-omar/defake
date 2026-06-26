@@ -5,7 +5,7 @@ namespace App\Service;
 class ClaimVerificationService
 {
     public function __construct(
-        private readonly GroqAiService $groqAiService
+        private readonly GeminiAiService $geminiAiService
     ) {
     }
 
@@ -56,7 +56,7 @@ Allowed verdict values:
 - INSUFFICIENT_EVIDENCE
 PROMPT;
 
-        $content = $this->groqAiService->ask([
+        $content = $this->geminiAiService->ask([
             [
                 'role' => 'system',
                 'content' => 'You are a professional fact-checking assistant. Return only valid JSON.',
