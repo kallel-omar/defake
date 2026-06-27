@@ -39,20 +39,28 @@ Reuters reported that inflation reached 7.2% in May while the central bank kept 
 
         foreach ($claims as $claim) {
 
-            $io->section($claim);
+    $io->section($claim);
 
-            $evidence = $this->internetEvidenceService->search($claim);
+    $evidenceQuery = $postText . "\n\nClaim to verify:\n" . $claim;
 
-            $verification = $this->claimVerificationService->verify(
-                $claim,
-                $evidence
-            );
+$evidence = $this->internetEvidenceService->search($evidenceQuery);
 
-            $io->writeln('Verdict: ' . $verification['verdict']);
-            $io->writeln('Score: ' . $verification['score']);
-            $io->writeln('Explanation: ' . $verification['explanation']);
-            $io->newLine();
-        }
+$verification = $this->claimVerificationService->verify(
+    $claim,
+    $evidence,
+    $postText
+);
+
+    $io->writeln('Verdict: ' . $verification['verdict']);
+    $io->writeln('Score: ' . $verification['score']);
+    $io->writeln('Context match: ' . (($verification['contextMatch'] ?? false) ? 'yes' : 'no'));
+
+if (!empty($verification['contextReason'])) {
+    $io->writeln('Context reason: ' . $verification['contextReason']);
+}
+    $io->writeln('Explanation: ' . $verification['explanation']);
+    $io->newLine();
+}
 
         return Command::SUCCESS;
     }

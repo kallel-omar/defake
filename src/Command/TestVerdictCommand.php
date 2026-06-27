@@ -7,6 +7,7 @@ use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Style\SymfonyStyle;
 
 #[AsCommand(
     name: 'app:test-verdict',
@@ -22,6 +23,8 @@ class TestVerdictCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        $io = new SymfonyStyle($input, $output);
+
         $claimResults = [
             [
                 'verdict' => 'SUPPORTED',
@@ -37,9 +40,10 @@ class TestVerdictCommand extends Command
             ],
         ];
 
-        dump(
-            $this->postVerdictService->calculate($claimResults)
-        );
+        $result = $this->postVerdictService->calculate($claimResults);
+
+        $io->writeln(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        $io->success('Verdict test finished successfully.');
 
         return Command::SUCCESS;
     }

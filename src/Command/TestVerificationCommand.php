@@ -40,7 +40,15 @@ Some economists predict higher prices.
             $evidence
         );
 
-        dump($result);
+        $result = $this->claimVerificationService->verify(
+    $claim,
+    $evidence
+);
+
+$io->writeln(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+$io->success('Verification test finished successfully.');
+
+return Command::SUCCESS;
 
         return Command::SUCCESS;
     }

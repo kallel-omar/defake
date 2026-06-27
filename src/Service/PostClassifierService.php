@@ -5,7 +5,7 @@ namespace App\Service;
 class PostClassifierService
 {
     public function __construct(
-       private readonly GeminiAiService $geminiAiService
+       private readonly GroqAiService $groqAiService
     ) {
     }
 
@@ -64,7 +64,7 @@ Facebook post:
 """$postText"""
 PROMPT;
 
-        $content = $this->geminiAiService->ask([
+        $content = $this->groqAiService->ask([
             [
                 'role' => 'system',
                 'content' => 'You are a strict JSON classifier. Return only valid JSON. No markdown.',

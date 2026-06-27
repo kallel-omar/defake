@@ -24,7 +24,7 @@ class OfficialSourceDetectorService
 
     public function __construct(
         private readonly HttpClientInterface $httpClient,
-        private readonly GeminiAiService $geminiAiService,
+        private readonly GroqAiService $groqAiService,
         private readonly string $serperApiKey,
     ) {
     }
@@ -51,7 +51,7 @@ class OfficialSourceDetectorService
             $googleEvidence
         );
 
-        $data = $this->geminiAiService->askJson($prompt, 1000);
+        $data = $this->groqAiService->askJson($prompt, 1000);
 
         if (empty($data)) {
             return $this->fallbackDetection($pageName, $googleEvidence);
@@ -116,7 +116,7 @@ class OfficialSourceDetectorService
 
         $prompt = $this->buildEvidenceUrlPrompt($url, $title, $snippet, $claim);
 
-        $data = $this->geminiAiService->askJson($prompt, 800);
+        $data = $this->groqAiService->askJson($prompt, 800);
 
         if (empty($data)) {
             return $this->result(

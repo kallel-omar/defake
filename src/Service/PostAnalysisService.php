@@ -11,16 +11,17 @@ class PostAnalysisService
         private readonly HttpClientInterface $httpClient,
         private readonly CredibilityEngineService $credibilityEngineService,
         private readonly SourceConfidenceService $sourceConfidenceService,
-        private readonly GroqAiService $groqAiService,
-        private readonly GeminiAiService $geminiAiService,
+
         private readonly OfficialSourceDetectorService $officialSourceDetectorService,
         private readonly EvidenceDecisionService $evidenceDecisionService,
         private readonly ClaimExtractionService $claimExtractionService,
+private readonly ClaimVerificationService $claimVerificationService,
     ) {
     }
 
     public function analyze(string $url, string $postText, array $sourceContext = []): array
     {
+          $originalPostText = $postText;
         $claims = $this->claimExtractionService->extract($postText);
 $mainClaim = trim((string) ($claims[0] ?? ''));
 
@@ -42,7 +43,9 @@ if ($mainClaim === '' || $mainClaim === 'NO_VERIFIABLE_CLAIM') {
     ];
 }
 
-$internetEvidenceData = $this->searchInternetEvidence($mainClaim);
+$searchQuery = $this->limitText($originalPostText, 1000) . "\n\nClaim to verify:\n" . $mainClaim;
+
+$internetEvidenceData = $this->searchInternetEvidence($searchQuery);
 
 
         $internetEvidence = $internetEvidenceData['text'];
@@ -159,25 +162,34 @@ Return ONLY valid JSON:
 }
 PROMPT;
 
-       $geminiResult = $this->geminiAiService->analyzeEvidence(
+       $verificationResult = $this->claimVerificationService->verify(
     $mainClaim,
-    $evidenceItems
+    $internetEvidence,
+    $originalPostText
 );
 
 $result = [
-    'evidenceScore' => match ($geminiResult['verdict'] ?? 'NOT_ENOUGH_EVIDENCE') {
-        'TRUE' => 25,
-        'MISLEADING' => 15,
-        'FALSE' => 5,
+    'evidenceScore' => match ($verificationResult['verdict'] ?? 'INSUFFICIENT_EVIDENCE') {
+        'SUPPORTED' => 25,
+        'CONTRADICTED' => 5,
         default => 5,
     },
+
     'languageScore' => 20,
-    'evidenceReason' => $geminiResult['explanation'] ?? 'Gemini analyzed the available evidence.',
+    'evidenceReason' => $verificationResult['explanation'] ?? 'Groq analyzed the available evidence.',
     'sourceReason' => $officialReason,
-    'languageReason' => 'Language analysis was kept neutral because Gemini was used mainly for evidence verification.',
-    'verificationReason' => $geminiResult['explanation'] ?? 'Gemini completed the evidence verification.',
-    'explanation' => $geminiResult['explanation'] ?? 'Gemini completed the credibility analysis.',
+    'languageReason' => 'Language analysis was kept neutral because Groq was used mainly for evidence verification.',
+    'verificationReason' => $verificationResult['explanation'] ?? 'Groq completed the credibility analysis.',
+    'explanation' => $verificationResult['explanation'] ?? 'Groq completed the credibility analysis.',
+    'contextMatch' => $verificationResult['contextMatch'] ?? false,
+    'contextReason' => $verificationResult['contextReason'] ?? '',
+    'claimContextComplete' => $verificationResult['claimContextComplete'] ?? false,
+    'evidenceAddsNewContext' => $verificationResult['evidenceAddsNewContext'] ?? true,
 ];
+$verificationContextSafe =
+    ($verificationResult['contextMatch'] ?? false) === true
+    && ($verificationResult['claimContextComplete'] ?? false) === true
+    && ($verificationResult['evidenceAddsNewContext'] ?? true) === false;
 $evidenceScore = max(0, min(25, (int) ($result['evidenceScore'] ?? 0)));
 $languageScore = max(0, min(25, (int) ($result['languageScore'] ?? 0)));
 
@@ -218,12 +230,21 @@ if (
             $languageScore
         );
 
-       if ($evidenceDecision['status'] === 'SUPPORTED') {
+       if ($evidenceDecision['status'] === 'SUPPORTED' && $verificationContextSafe) {
     $evidenceScore = max($evidenceScore, 20);
     $verificationScore = max($verificationScore, 20);
 
     $result['evidenceReason'] = $evidenceDecision['reason'];
-    $result['verificationReason'] = 'The main claim is supported by relevant external sources.';
+    $result['verificationReason'] = 'The main claim is supported by relevant external sources in the same context.';
+}
+
+if ($evidenceDecision['status'] === 'SUPPORTED' && !$verificationContextSafe) {
+    $evidenceScore = min($evidenceScore, 10);
+    $verificationScore = min($verificationScore, 8);
+
+    $result['evidenceReason'] = $result['contextReason'] ?? 'The evidence appears related but does not safely match the original claim context.';
+    $result['verificationReason'] = 'The evidence was not accepted as support because the claim context was incomplete or the evidence added new context.';
+    $result['explanation'] = 'DeFake found related evidence, but it does not safely verify the exact claim in the same context. The post should be treated with caution.';
 }
 
 if ($evidenceDecision['status'] === 'PARTIALLY_SUPPORTED') {
@@ -428,7 +449,7 @@ if (
         return $response->toArray(false);
     }
 
-    
+
 
 private function formatEvidenceSources(array $items, ?string $claim = null, array $relevantIndexes = []): array
 {

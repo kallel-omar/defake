@@ -5,7 +5,7 @@ namespace App\Service;
 class ClaimExtractionService
 {
     public function __construct(
-        private readonly GeminiAiService $geminiAiService
+        private readonly GroqAiService $groqAiService
     ) {
     }
 
@@ -17,7 +17,7 @@ class ClaimExtractionService
             return ['NO_VERIFIABLE_CLAIM'];
         }
 
-        // Reduce token usage for free Gemini quota
+        // Reduce token usage for AI model limits
         $postText = mb_substr($postText, 0, 6000);
 
         $prompt = <<<PROMPT
@@ -159,10 +159,9 @@ If the post contains clear factual claims, use:
 Never force claims.
 Return max 3 claims.
 PROMPT;
-dump('POST TEXT SENT TO GEMINI:');
-dump($postText);
 
-        $content = $this->geminiAiService->ask([
+
+        $content = $this->groqAiService->ask([
             [
                 'role' => 'system',
                 'content' => 'Return only valid JSON. No markdown. No explanation outside JSON.',
@@ -172,8 +171,7 @@ dump($postText);
                 'content' => $prompt . "\n\nFacebook post:\n" . $postText,
             ],
         ]);
-        dump('GEMINI CLAIM EXTRACTION RESPONSE:');
-dump($content);
+
 
         if (!$content) {
             return ['NO_VERIFIABLE_CLAIM'];
