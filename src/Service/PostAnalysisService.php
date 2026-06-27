@@ -45,7 +45,7 @@ if ($mainClaim === '' || $mainClaim === 'NO_VERIFIABLE_CLAIM') {
 
 $searchQuery = $this->limitText($originalPostText, 1000) . "\n\nClaim to verify:\n" . $mainClaim;
 
-$internetEvidenceData = $this->searchInternetEvidence($searchQuery);
+$internetEvidenceData = $this->searchInternetEvidence($searchQuery, $mainClaim);
 
 
         $internetEvidence = $internetEvidenceData['text'];
@@ -388,7 +388,7 @@ if (
         return mb_substr($text, 0, $maxChars) . "\n...[truncated]";
     }
 
-    private function searchInternetEvidence(string $postText): array
+    private function searchInternetEvidence(string $postText, ?string $claim = null): array
 {
     $query = $postText;
     $data = $this->callSerper('news', $query);
@@ -408,24 +408,118 @@ if (
 
     $results = [];
 
-    foreach (array_slice($items, 0, 5) as $item) {
-        $title = $item['title'] ?? 'No title';
-        $snippet = $item['snippet'] ?? 'No snippet';
-        $link = $item['link'] ?? 'No link';
+    $rankedItems = [];
 
-        $confidence = $this->sourceConfidenceService->score($link);
+foreach (array_slice($items, 0, 10) as $item) {
+    $relevanceScore = $this->scoreEvidenceRelevance($item, $claim ?? $postText);
 
-        $results[] = "- Title: {$title}
+    if ($relevanceScore < 3) {
+        continue;
+    }
+
+    $link = $item['link'] ?? '';
+
+    if ($link === '') {
+        continue;
+    }
+
+    $confidence = $this->sourceConfidenceService->score($link);
+
+    $rankedItems[] = [
+        'item' => $item,
+        'relevanceScore' => $relevanceScore,
+        'sourceScore' => $confidence['score'] ?? 0,
+        'sourceLabel' => $confidence['label'] ?? 'Unknown',
+    ];
+}
+
+usort($rankedItems, static function (array $a, array $b): int {
+    return [$b['relevanceScore'], $b['sourceScore']]
+        <=> [$a['relevanceScore'], $a['sourceScore']];
+});
+
+if (empty($rankedItems)) {
+    return [
+        'text' => 'No relevant internet evidence found. Search results existed, but they did not match the key claim context.',
+        'items' => [],
+    ];
+}
+
+foreach (array_slice($rankedItems, 0, 5) as $rankedItem) {
+    $item = $rankedItem['item'];
+
+    $title = $item['title'] ?? 'No title';
+    $snippet = $item['snippet'] ?? 'No snippet';
+    $link = $item['link'] ?? 'No link';
+
+    $results[] = "- Title: {$title}
   Snippet: {$snippet}
   Link: {$link}
-  Source Confidence: {$confidence['score']}/100
-  Source Type: {$confidence['label']}";
-    }
+  Relevance Score: {$rankedItem['relevanceScore']}
+  Source Confidence: {$rankedItem['sourceScore']}/100
+  Source Type: {$rankedItem['sourceLabel']}";
+}
 
     return [
         'text' => implode("\n\n", $results),
         'items' => $items,
     ];
+}
+private function scoreEvidenceRelevance(array $item, string $claim): int
+{
+    $title = (string) ($item['title'] ?? '');
+    $snippet = (string) ($item['snippet'] ?? '');
+
+    $haystack = mb_strtolower($title . ' ' . $snippet);
+    $terms = $this->extractEvidenceTerms($claim);
+
+    $score = 0;
+
+    foreach ($terms as $term) {
+        $term = mb_strtolower($term);
+
+        if (str_contains($haystack, $term)) {
+            $score++;
+        }
+    }
+
+    return $score;
+}
+
+private function extractEvidenceTerms(string $text): array
+{
+    $words = preg_split('/[^\p{L}\p{N}.%]+/u', $text, -1, PREG_SPLIT_NO_EMPTY);
+
+    if (!$words) {
+        return [];
+    }
+
+    $stopWords = [
+        'the', 'a', 'an', 'of', 'for', 'to', 'in', 'on', 'at', 'by', 'with',
+        'from', 'that', 'this', 'these', 'those', 'while', 'and', 'or', 'but',
+        'is', 'are', 'was', 'were', 'be', 'been', 'being', 'has', 'have', 'had',
+        'new', 'said', 'says', 'reported', 'claimed', 'according', 'confirm',
+        'confirms', 'confirmed', 'announced',
+    ];
+
+    $terms = [];
+
+    foreach ($words as $word) {
+        $cleanWord = trim($word);
+        $lowerWord = mb_strtolower($cleanWord);
+
+        if (mb_strlen($cleanWord) < 3) {
+            continue;
+        }
+
+        if (in_array($lowerWord, $stopWords, true)) {
+            continue;
+        }
+
+        $terms[] = $cleanWord;
+    }
+
+    return array_values(array_unique($terms));
 }
 
     private function callSerper(string $type, string $query): array
