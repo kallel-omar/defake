@@ -423,6 +423,59 @@ Safety rules may keep a post Suspicious when evidence is weak, unclear, or not s
                     </div>
                 {% endfor %}
 
+                {% if is_granted('ROLE_ADMIN') %}
+                    <hr class="my-4">
+
+                    <div class="border rounded-4 p-3 bg-light">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h6 class="fw-bold mb-0">Admin Debug: 04B Scoring Metadata</h6>
+
+                            <span class="badge bg-dark">
+                                {{ postCheck.scoringVersion ?: 'Unknown version' }}
+                            </span>
+                        </div>
+
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-4">
+                                <div class="small text-muted">Evidence Decision</div>
+                                <div class="fw-semibold">{{ postCheck.evidenceDecision ?: 'N/A' }}</div>
+                            </div>
+
+                            <div class="col-md-4">
+                                <div class="small text-muted">Source Decision</div>
+                                <div class="fw-semibold">{{ postCheck.sourceDecision ?: 'N/A' }}</div>
+                            </div>
+
+                            <div class="col-md-4">
+                                <div class="small text-muted">Risk Decision</div>
+                                <div class="fw-semibold">{{ postCheck.riskDecision ?: 'N/A' }}</div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="small text-muted mb-1">Caps Applied</div>
+
+                            {% if postCheck.capsApplied %}
+                                {% for cap in postCheck.capsApplied %}
+                                    <span class="badge bg-warning text-dark me-1">{{ cap }}</span>
+                                {% endfor %}
+                            {% else %}
+                                <span class="text-muted small">No caps applied.</span>
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            <div class="small text-muted mb-1">Score Breakdown JSON</div>
+
+                            {% if postCheck.scoreBreakdown %}
+                                <pre class="small bg-white border rounded-3 p-3 mb-0 overflow-auto">{{ postCheck.scoreBreakdown|json_encode }}</pre>
+                            {% else %}
+                                <div class="text-muted small">No score breakdown stored for this result.</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                {% endif %}
+
             </div>
         </div>
 
