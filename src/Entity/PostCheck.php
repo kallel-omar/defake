@@ -87,6 +87,24 @@ class PostCheck
     #[ORM\Column(length: 255, nullable: true)]
     private ?string $mainClaim = null;
 
+   #[ORM\Column(length: 20, nullable: true)]
+    private ?string $scoringVersion = null;
+
+    #[ORM\Column(type: Types::JSON, nullable: true)]
+    private ?array $scoreBreakdown = null;
+
+    #[ORM\Column(length: 50, nullable: true)]
+    private ?string $evidenceDecision = null;
+
+    #[ORM\Column(length: 50, nullable: true)]
+    private ?string $sourceDecision = null;
+
+    #[ORM\Column(length: 50, nullable: true)]
+    private ?string $riskDecision = null;
+
+    #[ORM\Column(type: Types::JSON, nullable: true)]
+    private ?array $capsApplied = null;
+
     public function getId(): ?int
     {
         return $this->id;
@@ -262,123 +280,196 @@ class PostCheck
 
 
 
-    public function getEvidenceReason(): ?string
-{
-    return $this->evidenceReason;
-}
+   public function getEvidenceReason(): ?string
+    {
+        return $this->evidenceReason;
+    }
 
-public function setEvidenceReason(?string $evidenceReason): static
-{
-    $this->evidenceReason = $evidenceReason;
+    public function setEvidenceReason(?string $evidenceReason): static
+    {
+        $this->evidenceReason = $evidenceReason;
 
-    return $this;
-}
+        return $this;
+    }
 
-public function getSourceReason(): ?string
-{
-    return $this->sourceReason;
-}
+    public function getSourceReason(): ?string
+    {
+        return $this->sourceReason;
+    }
 
-public function setSourceReason(?string $sourceReason): static
-{
-    $this->sourceReason = $sourceReason;
+    public function setSourceReason(?string $sourceReason): static
+    {
+        $this->sourceReason = $sourceReason;
 
-    return $this;
-}
+        return $this;
+    }
 
-public function getLanguageReason(): ?string
-{
-    return $this->languageReason;
-}
+    public function getLanguageReason(): ?string
+    {
+        return $this->languageReason;
+    }
 
-public function setLanguageReason(?string $languageReason): static
-{
-    $this->languageReason = $languageReason;
+    public function setLanguageReason(?string $languageReason): static
+    {
+        $this->languageReason = $languageReason;
 
-    return $this;
-}
+        return $this;
+    }
 
-public function getVerificationReason(): ?string
-{
-    return $this->verificationReason;
-}
+    public function getVerificationReason(): ?string
+    {
+        return $this->verificationReason;
+    }
 
-public function setVerificationReason(?string $verificationReason): static
-{
-    $this->verificationReason = $verificationReason;
+    public function setVerificationReason(?string $verificationReason): static
+    {
+        $this->verificationReason = $verificationReason;
 
-    return $this;
-}
+        return $this;
+    }
 
-public function getContentType(): ?string
-{
-    return $this->contentType;
-}
+    public function getContentType(): ?string
+    {
+        return $this->contentType;
+    }
 
-public function setContentType(?string $contentType): static
-{
-    $this->contentType = $contentType;
+    public function setContentType(?string $contentType): static
+    {
+        $this->contentType = $contentType;
 
-    return $this;
-}
+        return $this;
+    }
 
-public function getContentTitle(): ?string
-{
-    return $this->contentTitle;
-}
+    public function getContentTitle(): ?string
+    {
+        return $this->contentTitle;
+    }
 
-public function setContentTitle(?string $contentTitle): static
-{
-    $this->contentTitle = $contentTitle;
+    public function setContentTitle(?string $contentTitle): static
+    {
+        $this->contentTitle = $contentTitle;
 
-    return $this;
-}
+        return $this;
+    }
 
-public function getContentSummary(): ?string
-{
-    return $this->contentSummary;
-}
+    public function getContentSummary(): ?string
+    {
+        return $this->contentSummary;
+    }
 
-public function setContentSummary(?string $contentSummary): static
-{
-    $this->contentSummary = $contentSummary;
+    public function setContentSummary(?string $contentSummary): static
+    {
+        $this->contentSummary = $contentSummary;
 
-    return $this;
-}
+        return $this;
+    }
 
-public function getProcessingStep(): ?string
-{
-    return $this->processingStep;
-}
+    public function getProcessingStep(): ?string
+    {
+        return $this->processingStep;
+    }
 
-public function setProcessingStep(?string $processingStep): static
-{
-    $this->processingStep = $processingStep;
+    public function setProcessingStep(?string $processingStep): static
+    {
+        $this->processingStep = $processingStep;
 
-    return $this;
-}
+        return $this;
+    }
 
-public function getEvidenceSources(): ?array
-{
-    return $this->evidenceSources;
-}
+    public function getEvidenceSources(): ?array
+    {
+        return $this->evidenceSources;
+    }
 
-public function setEvidenceSources(?array $evidenceSources): static
-{
-    $this->evidenceSources = $evidenceSources;
+    public function setEvidenceSources(?array $evidenceSources): static
+    {
+        $this->evidenceSources = $evidenceSources;
 
-    return $this;
-}
+        return $this;
+    }
 
-public function getMainClaim(): ?string
-{
-    return $this->mainClaim;
-}
+    public function getMainClaim(): ?string
+    {
+        return $this->mainClaim;
+    }
 
-public function setMainClaim(?string $mainClaim): static
-{
-    $this->mainClaim = $mainClaim;
+    public function setMainClaim(?string $mainClaim): static
+    {
+        $this->mainClaim = $mainClaim;
 
-    return $this;
-}
+        return $this;
+    }
+    public function getScoringVersion(): ?string
+    {
+        return $this->scoringVersion;
+    }
+
+    public function setScoringVersion(?string $scoringVersion): static
+    {
+        $this->scoringVersion = $scoringVersion;
+
+        return $this;
+    }
+
+    public function getScoreBreakdown(): ?array
+    {
+        return $this->scoreBreakdown;
+    }
+
+    public function setScoreBreakdown(?array $scoreBreakdown): static
+    {
+        $this->scoreBreakdown = $scoreBreakdown;
+
+        return $this;
+    }
+
+    public function getEvidenceDecision(): ?string
+    {
+        return $this->evidenceDecision;
+    }
+
+    public function setEvidenceDecision(?string $evidenceDecision): static
+    {
+        $this->evidenceDecision = $evidenceDecision;
+
+        return $this;
+    }
+
+    public function getSourceDecision(): ?string
+    {
+        return $this->sourceDecision;
+    }
+
+    public function setSourceDecision(?string $sourceDecision): static
+    {
+        $this->sourceDecision = $sourceDecision;
+
+        return $this;
+    }
+
+    public function getRiskDecision(): ?string
+    {
+        return $this->riskDecision;
+    }
+
+    public function setRiskDecision(?string $riskDecision): static
+    {
+        $this->riskDecision = $riskDecision;
+
+        return $this;
+    }
+
+    public function getCapsApplied(): ?array
+    {
+        return $this->capsApplied;
+    }
+
+    public function setCapsApplied(?array $capsApplied): static
+    {
+        $this->capsApplied = $capsApplied;
+
+        return $this;
+    }
+
+
 }

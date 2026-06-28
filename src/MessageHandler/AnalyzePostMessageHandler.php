@@ -106,12 +106,27 @@ final class AnalyzePostMessageHandler
             $postCheck->setStatus('completed');
             $postCheck->setProcessingStep('Completed');
 
-            $postCheck->setScore($result['score'] ?? 0);
-            $postCheck->setVerdict($result['verdict'] ?? 'Analysis Failed');
-            $postCheck->setExplanation($result['explanation'] ?? 'No explanation provided.');
-            $postCheck->setMainClaim($result['mainClaim'] ?? null);
+           $postCheck->setScore($result['score'] ?? 0);
+$postCheck->setVerdict($result['verdict'] ?? 'Analysis Failed');
+$postCheck->setExplanation($result['explanation'] ?? 'No explanation provided.');
+$postCheck->setMainClaim($result['mainClaim'] ?? null);
 
-            $scoreBreakdown = $result['scoreBreakdown'] ?? [];
+// Compact 04B debugging metadata.
+// Do not store raw prompts, raw AI responses, or full scraped Facebook JSON.
+$scoreBreakdown = is_array($result['scoreBreakdown'] ?? null)
+    ? $result['scoreBreakdown']
+    : [];
+
+$capsApplied = is_array($result['capsApplied'] ?? null)
+    ? array_values($result['capsApplied'])
+    : [];
+
+$postCheck->setScoringVersion($result['scoringVersion'] ?? null);
+$postCheck->setScoreBreakdown($scoreBreakdown ?: null);
+$postCheck->setEvidenceDecision($result['evidenceDecision'] ?? null);
+$postCheck->setSourceDecision($result['sourceDecision'] ?? null);
+$postCheck->setRiskDecision($result['riskDecision'] ?? null);
+$postCheck->setCapsApplied($capsApplied ?: null);
 
 $postCheck->setEvidenceScore(
     (int) ($scoreBreakdown['evidenceMatch']['score'] ?? $result['evidenceScore'] ?? 0)
