@@ -16,20 +16,23 @@ class ApifyFacebookExtractorService
 
     public function extract(string $url): array
     {
-        $response = $this->httpClient->request(
-            'POST',
-            'https://api.apify.com/v2/acts/apify~facebook-posts-scraper/run-sync-get-dataset-items?token=' . $this->apifyApiToken,
-            [
-                'json' => [
-                    'captionText' => false,
-                    'resultsLimit' => 1,
-                    'startUrls' => [
-                        ['url' => $url],
-                    ],
-                ],
-                'timeout' => 300,
-            ]
-        );
+       $response = $this->httpClient->request(
+    'POST',
+    'https://api.apify.com/v2/acts/apify~facebook-posts-scraper/run-sync-get-dataset-items',
+    [
+        'headers' => [
+            'Authorization' => 'Bearer ' . $this->apifyApiToken,
+        ],
+        'json' => [
+            'captionText' => false,
+            'resultsLimit' => 1,
+            'startUrls' => [
+                ['url' => $url],
+            ],
+        ],
+        'timeout' => 300,
+    ]
+);
 
         $items = $response->toArray(false);
 
