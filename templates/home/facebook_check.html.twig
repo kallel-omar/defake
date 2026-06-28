@@ -19,12 +19,12 @@
                 </h1>
 
                 <p class="lead text-muted mb-2">
-                    Analyze public claims, rumors, social media posts, articles and online content
+                    Analyze social media posts, articles and online content
                     to detect misinformation and fake news.
                 </p>
 
                 <div class="small text-muted">
-                    &#128679; AI-generated credibility analysis &middot; Verify important information independently
+                    🚧 AI-generated credibility analysis • Verify important information independently
                 </div>
 
             </div>
@@ -44,41 +44,37 @@
                         </div>
                     {% endfor %}
 
-                    <form method="post" action="{{ path('app_text_check') }}">
-                        <input type="hidden" name="_token" value="{{ csrf_token('text_check') }}">
+                    <form method="post">
 
                         <div class="mb-4">
-                            <label for="claim_text" class="form-label fw-semibold">
-                                Paste a claim or news text
+                            <label class="form-label fw-semibold">
+                                Paste a Facebook post URL
                             </label>
 
-                            <textarea
-                                id="claim_text"
-                                name="claim_text"
-                                class="form-control form-control-lg rounded-4"
-                                rows="7"
-                                minlength="8"
-                                maxlength="5000"
+                            <input
+                                type="url"
+                                name="url"
+                                class="form-control form-control-lg"
+                                placeholder="https://facebook.com/post/..."
                                 required
-                                placeholder="Example: Yann Sasse the Esperance Sportive player died."></textarea>
+                            >
+                        </div>
 
-                            <div class="form-text">
-                                Works with football rumors, public figures, transfers, injuries, deaths, dates, numbers, sanctions and official announcements.
-                            </div>
+                        <div class="mb-4">
+                            <label class="form-label fw-semibold">
+                                Paste the Facebook post text
+                            </label>
+
+                           
                         </div>
 
                         <button
                             type="submit"
-                            class="btn btn-danger btn-lg w-100 rounded-pill">
-                            &#128269; Analyze Claim
+                            class="btn btn-danger btn-lg w-100">
+                            🔍 Analyze Content
                         </button>
-                    </form>
 
-                    <div class="text-center mt-4">
-                        <a href="{{ path('app_facebook_check') }}" class="btn btn-outline-dark rounded-pill px-4">
-                            Check a Facebook post URL instead
-                        </a>
-                    </div>
+                    </form>
 
                 </div>
             </div>
@@ -88,7 +84,7 @@
                 <div class="col-md-4 mb-3">
                     <div class="card border-0 shadow-sm h-100">
                         <div class="card-body">
-                            <h3>&#9889;</h3>
+                            <h3>⚡</h3>
                             <h5>Fast Analysis</h5>
                             <p class="text-muted small">
                                 Get credibility results within seconds.
@@ -100,10 +96,10 @@
                 <div class="col-md-4 mb-3">
                     <div class="card border-0 shadow-sm h-100">
                         <div class="card-body">
-                            <h3>&#129302;</h3>
+                            <h3>🤖</h3>
                             <h5>AI Review</h5>
                             <p class="text-muted small">
-                                AI extracts claims and evaluates evidence, sources and language.
+                                AI evaluates claims, sources and language.
                             </p>
                         </div>
                     </div>
@@ -112,10 +108,10 @@
                 <div class="col-md-4 mb-3">
                     <div class="card border-0 shadow-sm h-100">
                         <div class="card-body">
-                            <h3>&#128202;</h3>
+                            <h3>📊</h3>
                             <h5>Detailed Report</h5>
                             <p class="text-muted small">
-                                View score, verdict, evidence and explanation.
+                                View score, verdict and explanation.
                             </p>
                         </div>
                     </div>

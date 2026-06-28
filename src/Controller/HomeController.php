@@ -16,8 +16,14 @@ use Symfony\Component\Routing\Attribute\Route;
 
 final class HomeController extends AbstractController
 {
-    #[Route('/', name: 'app_home', methods: ['GET', 'POST'])]
-    public function index(
+    #[Route('/', name: 'app_home', methods: ['GET'])]
+    public function index(): Response
+    {
+        return $this->render('home/index.html.twig');
+    }
+
+    #[Route('/check/facebook', name: 'app_facebook_check', methods: ['GET', 'POST'])]
+    public function facebookCheck(
         Request $request,
         EntityManagerInterface $em,
         PostCheckRepository $postCheckRepository,
@@ -39,7 +45,7 @@ final class HomeController extends AbstractController
                     'DeFake currently supports only public Facebook post links.'
                 );
 
-                return $this->redirectToRoute('app_home');
+               return $this->redirectToRoute('app_facebook_check');
             }
 
             $url = $this->normalizeFacebookUrl($submittedUrl);
@@ -73,7 +79,7 @@ final class HomeController extends AbstractController
                     );
                 }
 
-                return $this->redirectToRoute('app_home');
+                return $this->redirectToRoute('app_facebook_check');
             }
 
             $postCheck = new PostCheck();
@@ -104,7 +110,7 @@ final class HomeController extends AbstractController
             ]);
         }
 
-        return $this->render('home/index.html.twig');
+        return $this->render('home/facebook_check.html.twig');
     }
 
     #[Route('/check/text', name: 'app_text_check', methods: ['GET', 'POST'])]
