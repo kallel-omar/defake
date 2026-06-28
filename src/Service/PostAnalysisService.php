@@ -9,7 +9,7 @@ class PostAnalysisService
     public function __construct(
     private readonly string $serperApiKey,
     private readonly HttpClientInterface $httpClient,
-    private readonly CredibilityEngineService $credibilityEngineService,
+     
     private readonly SourceConfidenceService $sourceConfidenceService,
     private readonly OfficialSourceDetectorService $officialSourceDetectorService,
     private readonly EvidenceDecisionService $evidenceDecisionService,
@@ -78,13 +78,7 @@ $internetEvidenceData = $this->searchInternetEvidence($searchQuery, $mainClaim);
             $evidenceItems
         );
 
-        $calculatedSourceScore = $this->credibilityEngineService->calculateSourceScore($internetEvidence);
-
         $officialSource = $this->officialSourceDetectorService->detect($sourceContext, $postText);
-
-        if ($officialSource['official']) {
-            $calculatedSourceScore = 25;
-        }
 
         $pageName = $sourceContext['pageName'] ?? 'Unknown';
         $userName = $sourceContext['userName'] ?? 'Unknown';
@@ -204,225 +198,13 @@ $result = [
     'contextReason' => $verificationResult['contextReason'] ?? '',
     'claimContextComplete' => $verificationResult['claimContextComplete'] ?? false,
     'evidenceAddsNewContext' => $verificationResult['evidenceAddsNewContext'] ?? true,
-];
+ ];
+
 $verificationContextSafe =
     ($verificationResult['contextMatch'] ?? false) === true
     && ($verificationResult['claimContextComplete'] ?? false) === true
     && ($verificationResult['evidenceAddsNewContext'] ?? true) === false;
-$evidenceScore = max(0, min(25, (int) ($result['evidenceScore'] ?? 0)));
-$languageScore = max(0, min(25, (int) ($result['languageScore'] ?? 0)));
 
-$languageReason = mb_strtolower((string) ($result['languageReason'] ?? ''));
-
-if (
-    $languageScore < 15 &&
-    (
-        str_contains($languageReason, 'neutral') ||
-        str_contains($languageReason, 'factual') ||
-        str_contains($languageReason, 'clear') ||
-        str_contains($languageReason, 'informative')
-    )
-) {
-    $languageScore = 20;
-}
-
-if (
-    $languageScore > 10 &&
-    (
-        str_contains($languageReason, 'manipulative') ||
-        str_contains($languageReason, 'inflammatory') ||
-        str_contains($languageReason, 'propaganda') ||
-        str_contains($languageReason, 'insult') ||
-        str_contains($languageReason, 'highly emotional')
-    )
-) {
-    $languageScore = 5;
-}
-
-        if ($officialSource['official'] && $evidenceScore < 20) {
-            $evidenceScore = 20;
-        }
-
-        $verificationScore = $this->credibilityEngineService->calculateVerificationScore(
-            $evidenceScore,
-            $calculatedSourceScore,
-            $languageScore
-        );
-
-       if ($evidenceDecision['status'] === 'SUPPORTED' && $verificationContextSafe) {
-    $evidenceScore = $this->calculateExternalEvidenceScore(
-        $evidenceItems,
-        $evidenceDecision['relevantIndexes'] ?? []
-    );
-
-    $verificationScore = max($verificationScore, min(20, $evidenceScore));
-
-    $result['evidenceReason'] = $this->explainExternalEvidenceScore($evidenceScore);
-    $result['verificationReason'] = 'The main claim is supported by relevant external sources in the same context.';
-}
-
-if ($evidenceDecision['status'] === 'SUPPORTED' && !$verificationContextSafe) {
-    $evidenceScore = min($evidenceScore, 10);
-    $verificationScore = min($verificationScore, 8);
-
-    $result['evidenceReason'] = $result['contextReason'] ?? 'The evidence appears related but does not safely match the original claim context.';
-    $result['verificationReason'] = 'The evidence was not accepted as support because the claim context was incomplete or the evidence added new context.';
-    $result['explanation'] = 'DeFake found related evidence, but it does not safely verify the exact claim in the same context. The post should be treated with caution.';
-}
-
-if ($evidenceDecision['status'] === 'PARTIALLY_SUPPORTED') {
-    $evidenceScore = min($evidenceScore, 10);
-    $verificationScore = min($verificationScore, 10);
-
-    $result['evidenceReason'] = $evidenceDecision['reason'];
-    $result['verificationReason'] = 'The evidence is related, but it does not fully confirm the specific claim.';
-    $result['explanation'] = 'DeFake found some related sources, but they do not fully confirm the specific claim. The post should be treated with caution until a directly relevant source confirms it.';
-}
-
-if (in_array($evidenceDecision['status'], ['UNSUPPORTED', 'UNRELATED'], true)) {
-    $evidenceScore = min($evidenceScore, 10);
-    $verificationScore = min($verificationScore, 8);
-
-    $result['evidenceReason'] = $evidenceDecision['reason'];
-    $result['verificationReason'] = 'The available sources do not confirm the specific claim.';
-    $result['explanation'] = 'DeFake could not find relevant sources confirming the specific claim. Related or trusted sources may exist, but they do not verify this exact claim.';
-}
-
-if ($evidenceDecision['status'] === 'CONTRADICTED') {
-    $evidenceScore = min($evidenceScore, 5);
-    $verificationScore = min($verificationScore, 5);
-
-    $result['evidenceReason'] = $evidenceDecision['reason'];
-    $result['verificationReason'] = 'The available evidence appears to contradict the claim.';
-    $result['explanation'] = 'DeFake found evidence that appears to contradict the claim. The post is therefore considered high risk unless stronger evidence proves otherwise.';
-}
-
-       $officialCategory = $officialSource['category'] ?? 'unknown';
-$officialConfidence = (int) ($officialSource['confidence'] ?? 0);
-
-$isStrongPrimarySource =
-    $officialSource['official']
-    && $officialConfidence >= 85
-    && in_array($officialCategory, [
-        'government',
-        'ministry',
-        'public_authority',
-        'company',
-        'club',
-        'federation',
-        'organization',
-    ], true);
-
-if (
-    $isStrongPrimarySource &&
-    $evidenceDecision['status'] !== 'CONTRADICTED'
-) {
-    $evidenceScore = max($evidenceScore, 25);
-    $calculatedSourceScore = 25;
-    $verificationScore = max($verificationScore, 25);
-
-    $result['evidenceReason'] = 'The post appears to come from a strongly verified official source, so the page itself can be treated as primary evidence for its own announcement.';
-
-    $result['sourceReason'] = 'The Facebook source appears to be a strongly verified official organization page. ' . $officialSource['reason'];
-
-    $result['verificationReason'] = 'Because the announcement appears to come from a strongly verified official page of the organization concerned, it is treated as directly verifiable unless strong contradictory evidence exists.';
-
-    $result['explanation'] = 'This post appears to come from a strongly verified official source and concerns the organization’s own activity. It is considered credible unless reliable contradictory evidence is found.';
-}
-
-        $finalScore =
-            $evidenceScore +
-            $calculatedSourceScore +
-            $languageScore +
-            $verificationScore;
-            if ($evidenceDecision['status'] === 'CONTRADICTED') {
-    $finalScore = min($finalScore, 25);
-}
-
-if (
-    !$isStrongPrimarySource &&
-    in_array($evidenceDecision['status'], ['UNSUPPORTED', 'UNRELATED'], true)
-) {
-    $finalScore = min($finalScore, 50);
-}
-
-$hasStrongEvidenceSource = $this->hasStrongEvidenceSource(
-    $evidenceItems,
-    $evidenceDecision['relevantIndexes'] ?? []
-);
-
-if (
-    !$isStrongPrimarySource &&
-    $evidenceDecision['status'] === 'SUPPORTED' &&
-    !$hasStrongEvidenceSource
-) {
-    // Same claim was found, but only in weak/non-official sources.
-    // Evidence exists, but it is not strong enough for full trust.
-    $evidenceScore = $this->calculateExternalEvidenceScore(
-    $evidenceItems,
-    $evidenceDecision['relevantIndexes'] ?? []
-);
-    $verificationScore = min($verificationScore, 15);
-
-    $finalScore =
-        $evidenceScore +
-        $calculatedSourceScore +
-        $languageScore +
-        $verificationScore;
-
-    if ($finalScore > 50) {
-        $scoreOverflow = $finalScore - 50;
-
-        $verificationReduction = min($verificationScore, $scoreOverflow);
-        $verificationScore -= $verificationReduction;
-        $scoreOverflow -= $verificationReduction;
-
-        if ($scoreOverflow > 0) {
-            $evidenceReduction = min($evidenceScore, $scoreOverflow);
-            $evidenceScore -= $evidenceReduction;
-        }
-
-        $finalScore =
-            $evidenceScore +
-            $calculatedSourceScore +
-            $languageScore +
-            $verificationScore;
-    }
-
-    $finalScore = min($finalScore, 50);
-
-   
-    $result['evidenceReason'] = $this->explainExternalEvidenceScore($evidenceScore);
-
-$result['explanation'] = match ($evidenceScore) {
-    10 => 'DeFake found the same claim in one weak or non-official source, but this is not enough for full confirmation. The post should be treated with caution until stronger confirmation appears.',
-    15 => 'DeFake found the same claim in multiple weak or non-official sources, but no credible independent or official source confirms it yet. The post should be treated with caution until stronger confirmation appears.',
-    default => $this->explainExternalEvidenceScore($evidenceScore) . ' However, the post should still be treated with caution because no strong source confirmed it.',
-};
-
-$result['verificationReason'] = 'The evidence appears to support the same claim, but the source strength is not enough to safely mark the post as likely trusted.';
-}
-
-        if ($finalScore <= 25) {
-            $finalVerdict = 'Likely Fake';
-        } elseif ($finalScore <= 50) {
-            $finalVerdict = 'Suspicious';
-        } else {
-            $finalVerdict = 'Likely Trusted';
-        }
-        if (
-    $officialSource['official']
-    && $finalVerdict === 'Likely Trusted'
-    && $evidenceDecision['status'] !== 'CONTRADICTED'
-) {
-    $result['explanation'] = 'This post appears to come from an official source and concerns the organization’s own activity. It is considered credible unless reliable contradictory evidence is found.';
-
-    $result['verificationReason'] = 'Because the announcement appears to come from an official page of the organization concerned, it is treated as directly verifiable unless strong contradictory evidence exists.';
-
-    $result['evidenceReason'] = 'The Facebook page itself can be treated as primary evidence for its own announcement.';
-
-    $result['sourceReason'] = 'The Facebook source appears to be an official organization page. ' . $officialReason;
-}
 $formattedEvidenceSources = $this->formatEvidenceSources(
     $evidenceItems,
     $mainClaim,
@@ -476,18 +258,15 @@ $verdict04B = $this->decideVerdict04B(
 'capsApplied' => $verdict04B['capsApplied'],
             'evidenceSources' => $formattedEvidenceSources,
 
-            'evidenceScore' => $evidenceScore,
-            'sourceScore' => $calculatedSourceScore,
-            'languageScore' => $languageScore,
-            'verificationScore' => $verificationScore,
+            'evidenceScore' => (int) ($scoreBreakdown04B['evidenceMatch']['score'] ?? 0),
+'sourceScore' => (int) ($scoreBreakdown04B['sourceAuthority']['score'] ?? 0),
+'languageScore' => (int) ($scoreBreakdown04B['sourceIndependence']['score'] ?? 0),
+'verificationScore' => (int) ($scoreBreakdown04B['riskSafety']['score'] ?? 0),
 
-            'evidenceReason' => $result['evidenceReason'] ?? '',
-            'sourceReason' => $officialSource['official']
-                ? 'The Facebook source appears to be an official organization page. ' . $officialReason
-                : ($result['sourceReason'] ?? $officialReason),
-            'languageReason' => $result['languageReason'] ?? '',
-            'verificationReason' => $result['verificationReason'] ?? '',
-
+'evidenceReason' => $scoreBreakdown04B['evidenceMatch']['reason'] ?? '',
+'sourceReason' => $scoreBreakdown04B['sourceAuthority']['reason'] ?? '',
+'languageReason' => $scoreBreakdown04B['sourceIndependence']['reason'] ?? '',
+'verificationReason' => $scoreBreakdown04B['riskSafety']['reason'] ?? '',
             'explanation' => $this->explainVerdict04B($verdict04B),
         ];
     }
