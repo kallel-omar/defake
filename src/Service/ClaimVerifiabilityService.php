@@ -199,6 +199,16 @@ class ClaimVerifiabilityService
             'august', 'september', 'october', 'november', 'december',
             'aujourd', 'hier', 'demain', 'lundi', 'mardi', 'mercredi', 'jeudi',
             'vendredi', 'samedi', 'dimanche',
+            // Durations / periods / contract terms
+            'موسم', 'موسمين', 'مواسم', 'سنة', 'سنتين', 'سنوات', 'عام', 'عامين', 'اعوام',
+            'شهر', 'شهرين', 'اشهر', 'أشهر', 'اسبوع', 'أسبوع', 'اسبوعين', 'أسبوعين',
+            'لمدة', 'مده', 'مدة',
+
+            'season', 'seasons', 'year', 'years', 'month', 'months', 'week', 'weeks',
+            'two-year', 'three-year', 'one-year', 'multi-year', 'duration', 'period',
+
+            'saison', 'saisons', 'an', 'ans', 'année', 'années', 'mois', 'semaine', 'semaines',
+            'durée', 'periode', 'période',
 
             // Public checkable anchors
             'قرار', 'بلاغ', 'بيان', 'وثيقه', 'وثيقة', 'قانون', 'حكم', 'محكمه', 'محكمة',
