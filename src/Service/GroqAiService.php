@@ -73,18 +73,18 @@ class GroqAiService
                 || str_contains($lowerMessage, 'connection');
 
             if ($isRetryable && $attempt < $maxAttempts) {
-                sleep(3 * $attempt);
-                continue;
-            }
+    sleep($this->getRetryDelaySeconds($body, $attempt));
+    continue;
+}
 
             throw new \RuntimeException('Groq API error: ' . $message);
         } catch (\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface $e) {
             $lastError = $e->getMessage();
 
             if ($attempt < $maxAttempts) {
-                sleep(3 * $attempt);
-                continue;
-            }
+    sleep($this->getRetryDelaySeconds($e->getMessage(), $attempt));
+    continue;
+}
 
             throw new \RuntimeException(
                 'Groq connection failed after ' . $maxAttempts . ' attempts: ' . $e->getMessage(),
@@ -95,6 +95,22 @@ class GroqAiService
     }
 
     throw new \RuntimeException('Groq failed after retrying. Last error: ' . ($lastError ?? 'unknown error'));
+}
+private function getRetryDelaySeconds(string $message, int $attempt): int
+{
+    $message = mb_strtolower($message);
+
+    if (preg_match('/try again in\s+([0-9]+(?:\.[0-9]+)?)s/i', $message, $matches) === 1) {
+        $seconds = (float) $matches[1];
+
+        return min(30, max(2, (int) ceil($seconds) + 1));
+    }
+
+    if (preg_match('/retry-after:\s*([0-9]+)/i', $message, $matches) === 1) {
+        return min(30, max(2, (int) $matches[1] + 1));
+    }
+
+    return min(30, 3 * $attempt);
 }
     public function askJson(string $prompt, int $maxTokens = 1000): array
     {
