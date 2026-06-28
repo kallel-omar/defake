@@ -30,10 +30,10 @@ final class HomeController extends AbstractController
             $ip = $request->getClientIp() ?? 'anonymous';
             $isAdmin = $this->isGranted('ROLE_ADMIN');
 
-            $url = trim((string) $request->request->get('url'));
-            $postText = trim((string) $request->request->get('post_text'));
+           $submittedUrl = trim((string) $request->request->get('url'));
+$postText = trim((string) $request->request->get('post_text'));
 
-            if (!$this->isSupportedFacebookPost($url)) {
+if (!$this->isSupportedFacebookPost($submittedUrl)) {
                 $this->addFlash(
                     'error',
                     'DeFake currently supports only public Facebook post links.'
@@ -42,7 +42,8 @@ final class HomeController extends AbstractController
                 return $this->redirectToRoute('app_home');
             }
 
-            $urlHash = hash('sha256', $url);
+           $url = $this->normalizeFacebookUrl($submittedUrl);
+$urlHash = hash('sha256', $url);
 
             $existingPostCheck = $postCheckRepository->findOneBy([
                 'urlHash' => $urlHash,
@@ -108,7 +109,67 @@ final class HomeController extends AbstractController
     {
         return 'Facebook';
     }
+private function normalizeFacebookUrl(string $url): string
+{
+    $url = trim($url);
 
+    $parts = parse_url($url);
+
+    if (!$parts || empty($parts['host'])) {
+        return $url;
+    }
+
+    $host = strtolower($parts['host']);
+    $host = preg_replace('/^(www\.|m\.|mobile\.)/', '', $host) ?? $host;
+
+    if (!$this->isFacebookHost($host)) {
+    return $url;
+}
+
+    $path = $parts['path'] ?? '';
+    $path = '/' . ltrim($path, '/');
+    $path = rtrim($path, '/');
+
+    if ($path === '') {
+        $path = '/';
+    }
+
+    $allowedQueryKeys = [
+        'story_fbid',
+        'id',
+        'fbid',
+        'comment_id',
+        'reply_comment_id',
+    ];
+
+    $queryParams = [];
+
+    if (!empty($parts['query'])) {
+        parse_str($parts['query'], $queryParams);
+
+        $queryParams = array_filter(
+            $queryParams,
+            static fn ($key) => in_array($key, $allowedQueryKeys, true),
+            ARRAY_FILTER_USE_KEY
+        );
+
+        ksort($queryParams);
+    }
+
+    $normalized = 'https://www.facebook.com' . $path;
+
+    if (!empty($queryParams)) {
+        $normalized .= '?' . http_build_query($queryParams);
+    }
+
+    return $normalized;
+}
+private function isFacebookHost(string $host): bool
+{
+    $host = strtolower($host);
+
+    return $host === 'facebook.com' || str_ends_with($host, '.facebook.com');
+}
     private function isSupportedFacebookPost(string $url): bool
     {
         $host = parse_url($url, PHP_URL_HOST);
@@ -121,13 +182,9 @@ final class HomeController extends AbstractController
         $host = strtolower($host);
         $path = strtolower($path);
 
-        if (
-            !str_contains($host, 'facebook.com') &&
-            !str_contains($host, 'www.facebook.com') &&
-            !str_contains($host, 'm.facebook.com')
-        ) {
-            return false;
-        }
+        if (!$this->isFacebookHost($host)) {
+    return false;
+}
 
         $rejectedPaths = [
             '/groups/',
