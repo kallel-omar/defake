@@ -50,7 +50,15 @@ Your job has THREE steps:
 3. If it contains factual claims, return the most important verifiable claim DeFake should verify.
 
 The post may be in any language, including Arabic, Tunisian Arabic, Maghrebi Arabic, French, English, or mixed language.
-
+Messy input tolerance rule:
+- The post may be short, badly written, misspelled, missing accents, or written with weak grammar.
+- Try to understand the intended public factual claim before deciding it is not verifiable.
+- Do not reject a claim only because a person name, club name, organization name, or action is misspelled.
+- If the text contains a possible public subject plus a factual action, classify it as fact_checkable=true and return the best claim using the wording present in the post.
+- Examples of factual actions include: died, injured, signed, joined, left, transferred, arrested, appointed, resigned, suspended, banned, announced, denied, won, lost, postponed, cancelled, approved, or sanctioned.
+- Do not invent missing facts or replace misspelled entities with guessed official names.
+- Keep the original ambiguous or misspelled wording when needed.
+- Still return fact_checkable=false for jokes, insults, pure opinions, personal feelings, spam, or vague text with no subject and no factual action.
 Core rule:
 Do NOT extract every possible sentence.
 Select the main claim that best represents what DeFake should verify.
@@ -68,7 +76,7 @@ Allowed content_type values:
 - no_claim
 - mixed
 
-Classify fact_checkable=true only when the post contains at least one clear factual claim that can be checked with external evidence.
+Classify fact_checkable=true when the post contains at least one clear OR reasonably understandable public factual claim that can be checked with external evidence.
 
 A factual claim usually has:
 1. A subject:
