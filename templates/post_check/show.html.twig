@@ -39,32 +39,44 @@
 {% set score = postCheck.score ?? 0 %}
 {% set currentStatus = postCheck.status|lower %}
 
+{% set checkedContentType = postCheck.contentType ?? '' %}
+{% set checkedPlatform = postCheck.platform ?? '' %}
+{% set checkedUrl = postCheck.url ?? '' %}
+
+{% set isTextCheck = checkedContentType == 'manual_text'
+    or checkedPlatform == 'Text'
+    or checkedUrl starts with 'text://manual/'
+%}
+
 {% if postCheck.verdict == 'NOT_VERIFIABLE' %}
     {% set verdictClass = 'info' %}
-    {% set verdictIcon = '📝' %}
     {% set displayVerdict = postCheck.contentType|default('Content')|replace({'_':' '})|title %}
-    {% set pageSubtitle = 'AI content classification for this Facebook post.' %}
 {% elseif postCheck.verdict == 'Likely Trusted' %}
     {% set verdictClass = 'success' %}
-    {% set verdictIcon = '🟢' %}
     {% set displayVerdict = 'Likely Trusted' %}
-    {% set pageSubtitle = 'AI credibility report for this Facebook post.' %}
 {% elseif postCheck.verdict == 'Suspicious' %}
     {% set verdictClass = 'warning' %}
-    {% set verdictIcon = '🟡' %}
     {% set displayVerdict = 'Suspicious' %}
-    {% set pageSubtitle = 'AI credibility report for this Facebook post.' %}
 {% elseif postCheck.verdict == 'Likely Fake' %}
     {% set verdictClass = 'danger' %}
-    {% set verdictIcon = '🔴' %}
     {% set displayVerdict = 'Likely Fake' %}
-    {% set pageSubtitle = 'AI credibility report for this Facebook post.' %}
 {% else %}
     {% set verdictClass = 'secondary' %}
-    {% set verdictIcon = '⚪' %}
     {% set displayVerdict = postCheck.verdict ?: 'Pending Analysis' %}
-    {% set pageSubtitle = 'AI credibility report for this Facebook post.' %}
 {% endif %}
+
+{% set pageSubtitle = postCheck.verdict == 'NOT_VERIFIABLE'
+    ? (
+        isTextCheck
+            ? 'AI content classification for this text claim.'
+            : 'AI content classification for this Facebook post.'
+    )
+    : (
+        isTextCheck
+            ? 'AI credibility report for this text claim.'
+            : 'AI credibility report for this Facebook post.'
+    )
+%}
 
 {% if currentStatus in ['pending', 'processing'] %}
     <meta http-equiv="refresh" content="5">
@@ -98,36 +110,44 @@
                             {% if currentStatus == 'pending' %}
                                 Your request is waiting in the analysis queue. Make sure the Messenger worker is running.
                             {% else %}
-                                DeFake is checking this Facebook post. This page refreshes automatically.
+                                {{ isTextCheck
+                                    ? 'DeFake is checking this text claim. This page refreshes automatically.'
+                                    : 'DeFake is checking this Facebook post. This page refreshes automatically.'
+                                }}
                             {% endif %}
                         </p>
 
                         <div class="text-start mx-auto" style="max-width: 430px;">
                             <div class="d-flex align-items-center mb-3">
                                 <span class="me-3 {% if currentStatus == 'processing' %}text-success{% endif %} fw-bold">
-                                    {% if currentStatus == 'processing' %}✓{% else %}⏳{% endif %}
+                                    {% if currentStatus == 'processing' %}&check;{% else %}&hellip;{% endif %}
                                 </span>
                                 <span class="fw-semibold">Waiting for analysis worker</span>
                             </div>
 
                             <div class="d-flex align-items-center mb-3">
-                                <span class="me-3">⏳</span>
-                                <span class="fw-semibold">Extracting Facebook post</span>
+                                <span class="me-3">&hellip;</span>
+                                <span class="fw-semibold">
+                                    {{ isTextCheck ? 'Preparing submitted text' : 'Extracting Facebook post' }}
+                                </span>
                             </div>
 
                             <div class="d-flex align-items-center mb-3">
-                                <span class="me-3">⏳</span>
+                                <span class="me-3">&hellip;</span>
                                 <span class="fw-semibold">Checking sources</span>
                             </div>
 
                             <div class="d-flex align-items-center">
-                                <span class="me-3">⏳</span>
+                                <span class="me-3">&hellip;</span>
                                 <span class="fw-semibold">Generating final credibility report</span>
                             </div>
                         </div>
 
                         <p class="text-muted small mt-4 mb-0">
-                            This may take a few seconds depending on Facebook extraction and AI response time.
+                            {{ isTextCheck
+                                ? 'This may take a few seconds depending on source search and AI response time.'
+                                : 'This may take a few seconds depending on Facebook extraction and AI response time.'
+                            }}
                         </p>
 
                     </div>
@@ -160,13 +180,25 @@
             <div class="row align-items-center g-4">
 
                 <div class="col-lg-8">
-                    <h6 class="text-muted text-uppercase small fw-bold mb-2">
-                        Checked URL
-                    </h6>
+                    {% if isTextCheck %}
+                        {% set submittedText = postCheck.content ?? postCheck.contentSummary ?? '' %}
 
-                    <a href="{{ postCheck.url }}" target="_blank" class="text-break fw-semibold text-decoration-none">
-                        {{ postCheck.url }}
-                    </a>
+                        <h6 class="text-muted text-uppercase small fw-bold mb-2">
+                            Submitted Text
+                        </h6>
+
+                        <div class="bg-light border rounded-3 p-3 text-break fw-semibold" style="white-space: pre-wrap;">
+                            {{ submittedText ?: 'Text claim was submitted manually.' }}
+                        </div>
+                    {% else %}
+                        <h6 class="text-muted text-uppercase small fw-bold mb-2">
+                            Checked URL
+                        </h6>
+
+                        <a href="{{ postCheck.url }}" target="_blank" class="text-break fw-semibold text-decoration-none">
+                            {{ postCheck.url }}
+                        </a>
+                    {% endif %}
 
                     <p class="text-muted small mt-2 mb-0">
                         Analyzed on {{ postCheck.createdAt|date('d/m/Y H:i') }}
@@ -175,7 +207,7 @@
 
                 <div class="col-lg-4 text-lg-end">
                     <span class="badge bg-{{ verdictClass }} fs-6 px-3 py-2 rounded-pill">
-                        {{ verdictIcon }} {{ displayVerdict }}
+                        {{ displayVerdict }}
                     </span>
                 </div>
 
@@ -184,13 +216,13 @@
         </div>
     </div>
 
+
     {% if postCheck.verdict == 'NOT_VERIFIABLE' %}
 
         <div class="card shadow border-0 rounded-4 mb-4">
             <div class="card-body p-4 p-md-5">
 
                 <div class="text-center mb-4">
-                    <div class="fs-1 mb-3">📝</div>
                     <h3 class="fw-bold mb-2">{{ displayVerdict }}</h3>
 
                     <p class="text-muted mb-0">
@@ -306,7 +338,7 @@
                     <h4 class="fw-bold mb-0">Verdict</h4>
 
                     <span class="badge bg-{{ verdictClass }} rounded-pill fs-6 px-3 py-2">
-                        {{ verdictIcon }} {{ displayVerdict }}
+                        {{ displayVerdict }}
                     </span>
                 </div>
 
@@ -342,7 +374,7 @@
                                 </a>
 
                                 <span class="badge bg-light text-dark border">
-                                    {{ source.confidenceLabel }} · {{ source.confidenceScore }}/100
+                                    {{ source.confidenceLabel }} &middot; {{ source.confidenceScore }}/100
                                 </span>
                             </div>
 
