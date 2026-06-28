@@ -10,7 +10,8 @@ class AnalysisUsageLimiter
 {
     public function __construct(
         private EntityManagerInterface $em
-    ) {}
+    ) {
+    }
 
     public function countToday(?User $user, string $ip): int
     {
@@ -24,11 +25,14 @@ class AnalysisUsageLimiter
             ->setParameter('today', $today);
 
         if ($user) {
-            $qb->andWhere('a.owner = :user OR a.ipAddress = :ip')
-                ->setParameter('user', $user)
-                ->setParameter('ip', $ip);
+            // Logged-in users are limited by account only.
+            // This prevents testers sharing the same WiFi/IP from blocking each other.
+            $qb->andWhere('a.owner = :user')
+                ->setParameter('user', $user);
         } else {
-            $qb->andWhere('a.ipAddress = :ip')
+            // Guests are limited by IP only, and only guest usage counts.
+            $qb->andWhere('a.owner IS NULL')
+                ->andWhere('a.ipAddress = :ip')
                 ->setParameter('ip', $ip);
         }
 
