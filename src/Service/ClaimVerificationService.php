@@ -34,7 +34,10 @@ Important verification rules:
 - Evidence must refer to the same real-world situation as the claim.
 - Check whether the evidence matches the same main subject, location, organization, person, date/time, event, quantity/number, and action.
 - If evidence confirms a similar claim but in a different context, set contextMatch to false.
-- If the original post is vague and evidence adds a country, organization, person, club, company, institution, or event that was not present in the post, set contextMatch to false unless the connection is clearly proven.
+- If the original post is vague and evidence adds a country, organization, person, club, company, institution, place, date, or event that was not present in the post, do NOT automatically reject it.
+- First check if the evidence is clearly about the same real-world story by comparing the main subject, action, topic, wording, and key entities.
+- Accept evidence as same-story context when it only adds harmless details such as fuller names, clearer organization names, source wording, location details, dates, or extra background that still matches the same claim.
+- Only set contextMatch to false when the added context changes the story, points to a different event, identifies a different person/organization, or makes the claim more specific in a way that was not supported by the original post.
 - Do not import missing context from unrelated evidence.
 - Do not assume a claim is true because the same keywords or numbers appear in the evidence.
 - If the evidence is unrelated, weak, ambiguous, or only partially matches, use INSUFFICIENT_EVIDENCE.
@@ -42,7 +45,8 @@ Important verification rules:
 - Decide if the original claim has enough context to identify the real-world situation.
 - If the claim uses a generic subject like "the bank", "the club", "the player", "the company", "the ministry", "the government", "the president", "the coach", "the federation", or similar, the original post must clearly identify which one.
 - If the original post does not identify the subject enough, set claimContextComplete to false.
-- If the evidence introduces a specific subject, organization, country, person, place, event, or date that was not clearly present in the original claim/context, set evidenceAddsNewContext to true.
+- Set evidenceAddsNewContext to true only when the evidence introduces important context that changes the meaning of the original claim or could refer to a different real-world situation.
+- Do NOT set evidenceAddsNewContext to true when the evidence only adds harmless same-story details, such as fuller names, clearer organization names, source wording, dates, places, or background that still matches the same claim.
 - If claimContextComplete is false and evidenceAddsNewContext is true, verdict must be INSUFFICIENT_EVIDENCE.
 
 Strict verdict rules:
@@ -74,11 +78,11 @@ Return ONLY valid JSON with this exact structure:
 {
   "verdict": "INSUFFICIENT_EVIDENCE",
   "score": 50,
-  "claimContextComplete": false,
-  "evidenceAddsNewContext": true,
-  "contextMatch": false,
-  "contextReason": "The original claim is too vague, and the evidence adds specific context that was not clearly present in the original post.",
-  "explanation": "The evidence is related, but it does not explicitly verify the exact claim in the same context."
+  "claimContextComplete": true,
+  "evidenceAddsNewContext": false,
+  "contextMatch": true,
+  "contextReason": "The evidence appears to discuss the same real-world story as the claim, but the level of confirmation must still be judged carefully.",
+  "explanation": "The evidence is related to the claim. The final verdict depends on whether it clearly supports, contradicts, or only partially verifies the claim."
 }
 
 Allowed verdict values:

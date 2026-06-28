@@ -111,15 +111,39 @@ final class AnalyzePostMessageHandler
             $postCheck->setExplanation($result['explanation'] ?? 'No explanation provided.');
             $postCheck->setMainClaim($result['mainClaim'] ?? null);
 
-            $postCheck->setEvidenceScore($result['evidenceScore'] ?? 0);
-            $postCheck->setSourceScore($result['sourceScore'] ?? 0);
-            $postCheck->setLanguageScore($result['languageScore'] ?? 0);
-            $postCheck->setVerificationScore($result['verificationScore'] ?? 0);
+            $scoreBreakdown = $result['scoreBreakdown'] ?? [];
 
-            $postCheck->setEvidenceReason($result['evidenceReason'] ?? null);
-            $postCheck->setSourceReason($result['sourceReason'] ?? null);
-            $postCheck->setLanguageReason($result['languageReason'] ?? null);
-            $postCheck->setVerificationReason($result['verificationReason'] ?? null);
+$postCheck->setEvidenceScore(
+    (int) ($scoreBreakdown['evidenceMatch']['score'] ?? $result['evidenceScore'] ?? 0)
+);
+
+$postCheck->setSourceScore(
+    (int) ($scoreBreakdown['sourceAuthority']['score'] ?? $result['sourceScore'] ?? 0)
+);
+
+$postCheck->setLanguageScore(
+    (int) ($scoreBreakdown['sourceIndependence']['score'] ?? $result['languageScore'] ?? 0)
+);
+
+$postCheck->setVerificationScore(
+    (int) ($scoreBreakdown['riskSafety']['score'] ?? $result['verificationScore'] ?? 0)
+);
+
+$postCheck->setEvidenceReason(
+    $scoreBreakdown['evidenceMatch']['reason'] ?? $result['evidenceReason'] ?? null
+);
+
+$postCheck->setSourceReason(
+    $scoreBreakdown['sourceAuthority']['reason'] ?? $result['sourceReason'] ?? null
+);
+
+$postCheck->setLanguageReason(
+    $scoreBreakdown['sourceIndependence']['reason'] ?? $result['languageReason'] ?? null
+);
+
+$postCheck->setVerificationReason(
+    $scoreBreakdown['riskSafety']['reason'] ?? $result['verificationReason'] ?? null
+);
             $postCheck->setEvidenceSources($result['evidenceSources'] ?? []);
 
             if (($result['verdict'] ?? null) === 'NOT_VERIFIABLE') {

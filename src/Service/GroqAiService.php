@@ -13,55 +13,88 @@ class GroqAiService
     ) {
     }
 
-    public function ask(array $messages, int $maxTokens = 800): ?string
+   public function ask(array $messages, int $maxTokens = 800): ?string
 {
     $maxAttempts = 3;
+    $lastError = null;
 
     for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
-        $response = $this->httpClient->request(
-            'POST',
-            'https://api.groq.com/openai/v1/chat/completions',
-            [
-                'headers' => [
-                    'Authorization' => 'Bearer ' . $this->groqApiKey,
-                    'Content-Type' => 'application/json',
-                ],
-                'json' => [
-                    'model' => $this->groqModel,
-                    'messages' => $messages,
-                    'temperature' => 0,
-                    'max_tokens' => $maxTokens,
-                    'response_format' => [
-                        'type' => 'json_object',
+        try {
+            $response = $this->httpClient->request(
+                'POST',
+                'https://api.groq.com/openai/v1/chat/completions',
+                [
+                    'headers' => [
+                        'Authorization' => 'Bearer ' . $this->groqApiKey,
+                        'Content-Type' => 'application/json',
                     ],
-                ],
-                'timeout' => 60,
-            ]
-        );
+                    'json' => [
+                        'model' => $this->groqModel,
+                        'messages' => $messages,
+                        'temperature' => 0,
+                        'max_tokens' => $maxTokens,
+                        'response_format' => [
+                            'type' => 'json_object',
+                        ],
+                    ],
+                    'timeout' => 60,
+                    'max_duration' => 75,
+                ]
+            );
 
-        $statusCode = $response->getStatusCode();
-        $data = $response->toArray(false);
+            $statusCode = $response->getStatusCode();
+            $body = $response->getContent(false);
 
-        if (!isset($data['error'])) {
-            return $data['choices'][0]['message']['content'] ?? null;
+            if ($statusCode >= 200 && $statusCode < 300) {
+                $data = json_decode($body, true);
+
+                if (!is_array($data)) {
+                    throw new \RuntimeException('Groq returned invalid JSON response.');
+                }
+
+                $content = trim((string) ($data['choices'][0]['message']['content'] ?? ''));
+
+                if ($content === '') {
+                    throw new \RuntimeException('Groq returned an empty response.');
+                }
+
+                return $content;
+            }
+
+            $message = 'HTTP ' . $statusCode . ': ' . mb_substr($body, 0, 1000);
+            $lowerMessage = mb_strtolower($message);
+
+            $isRetryable =
+                in_array($statusCode, [408, 409, 425, 429, 500, 502, 503, 504], true)
+                || str_contains($lowerMessage, 'rate limit')
+                || str_contains($lowerMessage, 'try again')
+                || str_contains($lowerMessage, 'temporarily')
+                || str_contains($lowerMessage, 'overloaded')
+                || str_contains($lowerMessage, 'connection');
+
+            if ($isRetryable && $attempt < $maxAttempts) {
+                sleep(3 * $attempt);
+                continue;
+            }
+
+            throw new \RuntimeException('Groq API error: ' . $message);
+        } catch (\Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface $e) {
+            $lastError = $e->getMessage();
+
+            if ($attempt < $maxAttempts) {
+                sleep(3 * $attempt);
+                continue;
+            }
+
+            throw new \RuntimeException(
+                'Groq connection failed after ' . $maxAttempts . ' attempts: ' . $e->getMessage(),
+                0,
+                $e
+            );
         }
-
-        $message = (string) ($data['error']['message'] ?? 'Unknown error');
-
-        $isRateLimit =
-            $statusCode === 429
-            || str_contains(strtolower($message), 'rate limit')
-            || str_contains(strtolower($message), 'try again');
-
-        if ($isRateLimit && $attempt < $maxAttempts) {
-            sleep(4 * $attempt);
-            continue;
-        }
-
-        throw new \RuntimeException('Groq API error: ' . $message);
     }
 
-    throw new \RuntimeException('Groq failed after retrying.');
+    throw new \RuntimeException('Groq failed after retrying. Last error: ' . ($lastError ?? 'unknown error'));
 }
     public function askJson(string $prompt, int $maxTokens = 1000): array
     {

@@ -362,50 +362,58 @@
         <div class="card shadow border-0 rounded-4">
             <div class="card-body p-4 p-md-5">
 
-                <h4 class="fw-bold mb-4">Why this score?</h4>
+                <h4 class="fw-bold mb-2">Why this score?</h4>
+
+<p class="text-muted small mb-4">
+   DeFake combines evidence match, source authority, source independence, and risk safety.
+Safety rules may keep a post Suspicious when evidence is weak, unclear, or not strong enough for a safe trusted verdict.
+</p>
 
                 {% set scores = [
+                   {
+    label: 'Evidence Match',
+    value: postCheck.evidenceScore,
+    max: 50,
+    color: 'primary',
+    reason: postCheck.evidenceReason ?: 'No evidence reason available.'
+},
+                   {
+   label: 'Source Authority',
+    value: postCheck.sourceScore,
+    color: 'success',
+    reason: postCheck.sourceReason ?: 'No source authority reason available.'
+},{
+    label: 'Source Independence',
+    value: postCheck.languageScore,
+    max: 15,
+    color: 'warning',
+    reason: postCheck.languageReason ?: 'No source independence reason available.'
+},
                     {
-                        label: 'Evidence Score',
-                        value: postCheck.evidenceScore,
-                        color: 'primary',
-                        reason: postCheck.evidenceReason ?: 'No evidence reason available.'
-                    },
-                    {
-                        label: 'Source Score',
-                        value: postCheck.sourceScore,
-                        color: 'success',
-                        reason: postCheck.sourceReason ?: 'No source reason available.'
-                    },
-                    {
-                        label: 'Language Score',
-                        value: postCheck.languageScore,
-                        color: 'warning',
-                        reason: postCheck.languageReason ?: 'No language reason available.'
-                    },
-                    {
-                        label: 'Verification Score',
-                        value: postCheck.verificationScore,
-                        color: 'info',
-                        reason: postCheck.verificationReason ?: 'No verification reason available.'
-                    }
+   label: 'Risk Safety',
+    value: postCheck.verificationScore,
+    max: 10,
+    color: 'info',
+    reason: postCheck.verificationReason ?: 'No risk safety reason available.'
+}
                 ] %}
 
                 {% for item in scores %}
                     {% set value = item.value ?? 0 %}
+{% set max = item.max ?? 25 %}
 
                     <div class="mb-4">
                         <div class="d-flex justify-content-between align-items-center mb-2">
                             <label class="fw-bold">{{ item.label }}</label>
 
                             <span class="badge bg-light text-dark border">
-                                {{ value }}/25
+                                {{ value }}/{{ max }}
                             </span>
                         </div>
 
                         <div class="progress rounded-pill mb-2" style="height: 10px;">
                             <div class="progress-bar bg-{{ item.color }}"
-                                 style="width: {{ (value / 25) * 100 }}%">
+                                 style="width: {{ max > 0 ? min((value / max) * 100, 100) : 0 }}%">
                             </div>
                         </div>
 
