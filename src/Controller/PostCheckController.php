@@ -14,28 +14,9 @@ final class PostCheckController extends AbstractController
     #[Route('/check/{id}', name: 'app_post_check_show')]
 public function show(PostCheck $postCheck): Response
 {
-    $owner = $postCheck->getUser();
-    $currentUser = $this->getUser();
-
-    // Public guest analyses can be viewed by anyone
-    if ($owner === null) {
-        return $this->render('post_check/show.html.twig', [
-            'postCheck' => $postCheck,
-        ]);
-    }
-
-    // Admin can view all analyses
-    if ($this->isGranted('ROLE_ADMIN')) {
-        return $this->render('post_check/show.html.twig', [
-            'postCheck' => $postCheck,
-        ]);
-    }
-
-    // Normal users can only view their own analyses
-    if ($owner !== $currentUser) {
-        throw $this->createAccessDeniedException('You cannot access this analysis.');
-    }
-
+    // DeFake analyses are based on public Facebook posts.
+    // Result pages are reusable so duplicate URL submissions can redirect safely.
+    // User history remains private elsewhere, and admin debug data is still protected in Twig.
     return $this->render('post_check/show.html.twig', [
         'postCheck' => $postCheck,
     ]);
