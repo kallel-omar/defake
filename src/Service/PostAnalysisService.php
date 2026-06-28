@@ -15,7 +15,7 @@ class PostAnalysisService
     private readonly EvidenceDecisionService $evidenceDecisionService,
     private readonly ClaimExtractionService $claimExtractionService,
     private readonly ClaimVerifiabilityService $claimVerifiabilityService,
-    private readonly ClaimVerificationService $claimVerificationService,
+    
 ) {
 }
 
@@ -175,41 +175,19 @@ Return ONLY valid JSON:
 }
 PROMPT;
 
-       $verificationResult = $this->claimVerificationService->verify(
-    $mainClaim,
-    $internetEvidence,
-    $originalPostText
-);
-
-$result = [
-    'evidenceScore' => match ($verificationResult['verdict'] ?? 'INSUFFICIENT_EVIDENCE') {
-        'SUPPORTED' => 25,
-        'CONTRADICTED' => 5,
-        default => 5,
-    },
-
-    'languageScore' => 20,
-    'evidenceReason' => $verificationResult['explanation'] ?? 'Groq analyzed the available evidence.',
-    'sourceReason' => $officialReason,
-    'languageReason' => 'Language analysis was kept neutral because Groq was used mainly for evidence verification.',
-    'verificationReason' => $verificationResult['explanation'] ?? 'Groq completed the credibility analysis.',
-    'explanation' => $verificationResult['explanation'] ?? 'Groq completed the credibility analysis.',
-    'contextMatch' => $verificationResult['contextMatch'] ?? false,
-    'contextReason' => $verificationResult['contextReason'] ?? '',
-    'claimContextComplete' => $verificationResult['claimContextComplete'] ?? false,
-    'evidenceAddsNewContext' => $verificationResult['evidenceAddsNewContext'] ?? true,
- ];
-
-$verificationContextSafe =
-    ($verificationResult['contextMatch'] ?? false) === true
-    && ($verificationResult['claimContextComplete'] ?? false) === true
-    && ($verificationResult['evidenceAddsNewContext'] ?? true) === false;
-
-$formattedEvidenceSources = $this->formatEvidenceSources(
+      $formattedEvidenceSources = $this->formatEvidenceSources(
     $evidenceItems,
     $mainClaim,
     $evidenceDecision['relevantIndexes'] ?? []
 );
+
+$verificationContextSafe = $this->isVerificationContextSafe04B(
+    $evidenceDecision,
+    $formattedEvidenceSources,
+    $officialSource
+);
+
+
 
 $scoreBreakdown04B = $this->buildScoreBreakdown(
     $this->calculateEvidenceMatchScore04B(
@@ -968,6 +946,44 @@ private function explainSourceIndependence04B(array $officialSource, array $form
         $distinctSources
     );
 }
+private function isVerificationContextSafe04B(
+    array $evidenceDecision,
+    array $formattedEvidenceSources,
+    array $officialSource
+): bool {
+    $status = strtoupper((string) ($evidenceDecision['status'] ?? 'UNKNOWN'));
+
+    if ($status !== 'SUPPORTED') {
+        return false;
+    }
+
+    $isOfficialSource = ($officialSource['official'] ?? false) === true;
+    $supportCount = (int) ($evidenceDecision['supportCount'] ?? 0);
+    $relevantIndexes = $evidenceDecision['relevantIndexes'] ?? [];
+
+    if (!is_array($relevantIndexes)) {
+        $relevantIndexes = [];
+    }
+
+    // If the original post is from an official source and the evidence relation is supported,
+    // we allow high context safety. Source authority is still scored separately.
+    if ($isOfficialSource && $supportCount >= 1) {
+        return true;
+    }
+
+    // For non-official sources, require at least two relevant evidence hits
+    // and at least two usable/displayable evidence sources.
+    if ($supportCount < 2 || count($relevantIndexes) < 2) {
+        return false;
+    }
+
+    if (count($formattedEvidenceSources) < 2) {
+        return false;
+    }
+
+    return true;
+}
+
 private function calculateEvidenceMatchScore04B(
     array $evidenceDecision,
     bool $verificationContextSafe,
