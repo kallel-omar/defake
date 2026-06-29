@@ -76,16 +76,22 @@ class ApifyFacebookExtractorService
             ?? $item['caption']
             ?? null;
 
-      return [
+      $pageName = is_string($item['pageName'] ?? null) ? trim($item['pageName']) : null;
+$userName = is_string($item['user']['name'] ?? null) ? trim($item['user']['name']) : null;
+$userId = is_scalar($item['user']['id'] ?? null) ? (string) $item['user']['id'] : null;
+$postUrl = is_string($item['url'] ?? null) ? trim($item['url']) : $url;
+
+return [
     'status' => 'ok',
     'text' => $text,
     'images' => $this->extractImages($item),
     'links' => $this->extractLinks($item, $text),
     'sourceContext' => [
-        'pageName' => $item['pageName'] ?? null,
-        'userName' => $item['user']['name'] ?? null,
-        'userId' => $item['user']['id'] ?? null,
-        'postUrl' => $item['url'] ?? null,
+        'source_type' => $pageName !== null && $pageName !== '' ? 'facebook_page' : 'facebook_post',
+        'pageName' => $pageName,
+        'userName' => $userName,
+        'userId' => $userId,
+        'postUrl' => $postUrl,
     ],
     'raw' => $item,
 ];

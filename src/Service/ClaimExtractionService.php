@@ -7,25 +7,16 @@ namespace App\Service;
 class ClaimExtractionService
 {
     private const NO_VERIFIABLE_CLAIM = 'NO_VERIFIABLE_CLAIM';
-
-    /**
-     * Keep this reasonable for MVP cost and Groq token limits.
-     * The original full post is still stored elsewhere; this is only the AI understanding input.
-     */
     private const MAX_AI_POST_CHARS = 10000;
-
-    /**
-     * DeFake MVP rule:
-     * verify one main claim by default, and a second claim only if it is clearly independent.
-     */
     private const MAX_RETURNED_CLAIMS = 2;
+    private const MIN_CLAIM_LENGTH = 15;
 
     public function __construct(
         private readonly GroqAiService $groqAiService
     ) {
     }
 
-    public function extract(string $postText): array
+    public function extract(string $postText, array $sourceContext = []): array
     {
         $postText = trim($postText);
 
@@ -40,7 +31,69 @@ class ClaimExtractionService
             return [self::NO_VERIFIABLE_CLAIM];
         }
 
-        $prompt = <<<PROMPT
+        $prompt = $this->buildPrompt();
+
+        $content = $this->groqAiService->ask([
+            [
+                'role' => 'system',
+                'content' => 'Return only valid JSON. No markdown. No explanation outside JSON.',
+            ],
+            [
+                'role' => 'user',
+                'content' => $prompt . "\n\nPost:\n" . $claimExtractionText,
+            ],
+        ]);
+
+        if (!$content) {
+            return [self::NO_VERIFIABLE_CLAIM];
+        }
+
+        $result = $this->decodeJson($content);
+
+        if (!is_array($result)) {
+            return [self::NO_VERIFIABLE_CLAIM];
+        }
+
+        $factCheckable = (bool) ($result['fact_checkable'] ?? false);
+
+        if (!$factCheckable) {
+            $fallbackClaims = $this->phpFallbackExtract($postText, $sourceContext);
+            if (!empty($fallbackClaims)) {
+                return array_slice($fallbackClaims, 0, self::MAX_RETURNED_CLAIMS);
+            }
+
+            return [self::NO_VERIFIABLE_CLAIM];
+        }
+$claims = $this->claimsFromAiResult($result);
+
+if (empty($claims)) {
+    return $this->fallbackOrNoVerifiable($postText, $sourceContext);
+}
+
+// === CRITICAL: Pass sourceContext to AI cleanup too ===
+$claims = $this->cleanExtractedClaims($claims, $postText, $sourceContext);
+
+if (empty($claims)) {
+    return $this->fallbackOrNoVerifiable($postText, $sourceContext);
+}
+
+return array_slice($claims, 0, self::MAX_RETURNED_CLAIMS);
+    }
+
+    // ==================== AI PROMPT (complete) ====================
+private function fallbackOrNoVerifiable(string $postText, array $sourceContext = []): array
+{
+    $fallbackClaims = $this->phpFallbackExtract($postText, $sourceContext);
+
+    if (!empty($fallbackClaims)) {
+        return array_slice($fallbackClaims, 0, self::MAX_RETURNED_CLAIMS);
+    }
+
+    return [self::NO_VERIFIABLE_CLAIM];
+}
+    private function buildPrompt(): string
+    {
+        return <<<PROMPT
 You are DeFake's post understanding and main claim selection engine.
 
 Your job has THREE steps:
@@ -235,48 +288,518 @@ Never force claims.
 Do not return markdown.
 Do not return text outside JSON.
 PROMPT;
+    }
 
-        $content = $this->groqAiService->ask([
-            [
-                'role' => 'system',
-                'content' => 'Return only valid JSON. No markdown. No explanation outside JSON.',
-            ],
-            [
-                'role' => 'user',
-                'content' => $prompt . "\n\nPost:\n" . $claimExtractionText,
-            ],
-        ]);
+    // ==================== PHP FALLBACK (AI said no claim) ====================
 
-        if (!$content) {
-            return [self::NO_VERIFIABLE_CLAIM];
+    private function phpFallbackExtract(string $postText, array $sourceContext = []): array
+    {
+        $sentences = $this->splitIntoSentences($postText);
+        $candidates = [];
+
+        foreach ($sentences as $sentence) {
+            $sentence = trim($sentence);
+            if (mb_strlen($sentence) < self::MIN_CLAIM_LENGTH) {
+                continue;
+            }
+
+            $subject = $this->extractSubject($sentence);
+            if ($subject === null) {
+                continue;
+            }
+
+            $action = $this->extractFactualAction($sentence);
+            if ($action === null) {
+                continue;
+            }
+
+            if (!$this->containsCheckableDetail($sentence)) {
+                continue;
+            }
+
+            if ($this->sentenceIsPureOpinion($sentence)) {
+                continue;
+            }
+
+            if ($this->isVagueSubject($subject, $sentence, $sourceContext)) {
+                continue;
+            }
+
+            $claim = $this->buildClaimFromSentence($sentence, $subject, $action);
+            if ($claim === null) {
+                continue;
+            }
+
+            $candidates[] = $claim;
         }
 
-        $result = $this->decodeJson($content);
-
-        if (!is_array($result)) {
-            return [self::NO_VERIFIABLE_CLAIM];
+        if (empty($candidates)) {
+            return [];
         }
 
-        $factCheckable = (bool) ($result['fact_checkable'] ?? false);
+        $best = $this->scoreFallbackCandidates($candidates, $postText);
 
-        if (!$factCheckable) {
-            return [self::NO_VERIFIABLE_CLAIM];
+        return $best ? [$best] : [];
+    }
+
+    private function splitIntoSentences(string $text): array
+    {
+        $text = preg_replace('/\R+/u', ' ', $text);
+        $pattern = '/(?<=[.!?؟。．!！?？])\s+/u';
+        $parts = preg_split($pattern, $text, -1, PREG_SPLIT_NO_EMPTY);
+
+        if (!$parts) {
+            return [$text];
         }
 
-        $claims = $this->claimsFromAiResult($result);
+        return array_values(array_filter(array_map('trim', $parts)));
+    }
+
+    private function extractSubject(string $sentence): ?string
+    {
+        if (preg_match('/^(ال[\p{L}\p{N}_\-.]+)/u', $sentence, $m)) {
+            $candidate = $m[1];
+            if ($this->isValidSubject($candidate)) {
+                return $candidate;
+            }
+        }
+
+        if (preg_match('/^([A-Z][\p{L}\p{N}_\-.]*(?:\s+(?:de|del|van|von|bin|al-|el-)?[A-Z][\p{L}\p{N}_\-.]*)*)/u', $sentence, $m)) {
+            $candidate = trim($m[1]);
+            if ($this->isValidSubject($candidate) && mb_strlen($candidate) > 2) {
+                return $candidate;
+            }
+        }
+
+        $invertedPattern = '/(?:أعلن|أعلنت|قال|قالت|صرح|صرحت|أكد|أكدت|أفاد|أفادت|announced|said|stated|confirmed|reported)\s+(?:أن\s+)?(ال[\p{L}\p{N}_\-.]+|[A-Z][\p{L}\p{N}_\-.]*)/iu';
+        if (preg_match($invertedPattern, $sentence, $m)) {
+            $candidate = $m[1];
+            if ($this->isValidSubject($candidate)) {
+                return $candidate;
+            }
+        }
+
+        if (preg_match('/(ال[\p{L}\p{N}_\-.]{3,}|[A-Z][\p{L}\p{N}_\-.]{2,}(?:\s+[A-Z][\p{L}\p{N}_\-.]{2,}){0,2})/u', $sentence, $m)) {
+            $candidate = $m[1];
+            if ($this->isValidSubject($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private function isValidSubject(string $candidate): bool
+    {
+        $normalized = $this->normalizeTerm($candidate);
+
+        $invalidSubjects = [
+            'الله', 'الذي', 'التي', 'الذين', 'اللواتي', 'اللاتي', 'الان', 'الآن',
+            'اليوم', 'غدا', 'أمس', 'هنا', 'هناك', 'كل', 'بعض', 'هذا', 'هذه', 'ذلك',
+            'التونسية', 'التونسيه', 'العربية', 'العربيه', 'العالمية', 'العالميه',
+            'the', 'this', 'that', 'these', 'those', 'there', 'here', 'today',
+            'tomorrow', 'yesterday', 'every', 'some', 'all', 'many', 'most',
+            'le', 'la', 'les', 'ce', 'cet', 'cette', 'ces', 'il', 'elle', 'on',
+        ];
+
+        if (in_array($normalized, $invalidSubjects, true)) {
+            return false;
+        }
+
+        if (mb_strlen($normalized) < 3 && !preg_match('/^[A-Z]{2,}$/u', $candidate)) {
+            return false;
+        }
+
+        return true;
+    }
+
+       /**
+     * Rejects vague subjects unless sentence or sourceContext provides specificity.
+     * Uses DeFake pipeline field names: pageName, userName, userId, postUrl, source_type
+     *
+     * CRITICAL: Only real source/entity contexts may save a vague subject.
+     * Manual entries, CLI tests, admin text, or generic users must NOT save vague subjects.
+     */
+    private function isVagueSubject(string $subject, string $sentence, array $sourceContext): bool
+    {
+        $vaguePatterns = [
+            '/^السفارة?$/u', '/^السفاره?$/u',
+            '/^الوزارة?$/u', '/^الوزاره?$/u',
+            '/^النادي$/u', '/^الفريق$/u', '/^المستشفى$/u',
+            '/^المحكمة?$/u', '/^المحكمه?$/u',
+            '/^الشركة?$/u', '/^الشركه?$/u',
+            '/^الجامعة?$/u', '/^الجامعه?$/u',
+            '/^الرابطة$/u', '/^الاتحاد$/u',
+            '/^الحكومة?$/u', '/^الحكومه?$/u',
+            '/^البلدية?$/u', '/^البلديه?$/u',
+            '/^الولاية?$/u', '/^الولايه?$/u',
+            '/^المديرية?$/u', '/^المديريه?$/u',
+            '/^المصنع$/u', '/^المطار$/u', '/^الميناء$/u',
+            '/^المركز$/u', '/^المعهد$/u',
+            '/^المؤسسة?$/u', '/^المؤسسه?$/u',
+            '/^الهيئة?$/u', '/^الهيئه?$/u',
+            '/^المنظمة?$/u', '/^المنظمه?$/u',
+            '/^الجمعية?$/u', '/^الجمعيه?$/u',
+            '/^اللجنة?$/u', '/^اللجنه?$/u',
+            '/^المجلس$/u', '/^الديوان$/u',
+            '/^القنصلية?$/u', '/^القنصليه?$/u',
+            '/^السفير$/u', '/^الوزير$/u', '/^المدير$/u',
+            '/^الرئيس$/u', '/^الملك$/u', '/^الامير$/u',
+            '/^الحاكم$/u', '/^النائب$/u', '/^القاضي$/u',
+            '/^المحامي$/u', '/^الطبيب$/u', '/^الممرض$/u',
+            '/^المدرب$/u', '/^اللاعب$/u', '/^الفنان$/u',
+            '/^المغني$/u', '/^الممثل$/u', '/^المؤلف$/u',
+            '/^الكاتب$/u', '/^الصحفي$/u', '/^الخبير$/u',
+            '/^المختص$/u', '/^الطالب$/u', '/^التلميذ$/u',
+            '/^الموظف$/u', '/^العامل$/u', '/^المواطن$/u',
+            '/^الشخص$/u', '/^الرجل$/u',
+            '/^المرأة?$/u', '/^المرأه?$/u',
+            '/^الطفل$/u', '/^الشاب$/u', '/^الفتاة$/u',
+            '/^embassy$/iu', '/^ministry$/iu', '/^hospital$/iu',
+            '/^court$/iu', '/^company$/iu', '/^university$/iu',
+            '/^federation$/iu', '/^government$/iu', '/^municipality$/iu',
+            '/^factory$/iu', '/^airport$/iu', '/^port$/iu',
+            '/^center$/iu', '/^institute$/iu', '/^organization$/iu',
+            '/^association$/iu', '/^committee$/iu', '/^council$/iu',
+            '/^consulate$/iu', '/^ambassador$/iu', '/^minister$/iu',
+            '/^director$/iu', '/^president$/iu', '/^king$/iu',
+            '/^prince$/iu', '/^governor$/iu', '/^deputy$/iu',
+            '/^judge$/iu', '/^lawyer$/iu', '/^doctor$/iu',
+            '/^nurse$/iu', '/^coach$/iu', '/^player$/iu',
+            '/^artist$/iu', '/^singer$/iu', '/^actor$/iu',
+            '/^author$/iu', '/^writer$/iu', '/^journalist$/iu',
+            '/^expert$/iu', '/^specialist$/iu', '/^student$/iu',
+            '/^pupil$/iu', '/^employee$/iu', '/^worker$/iu',
+            '/^citizen$/iu', '/^person$/iu', '/^man$/iu',
+            '/^woman$/iu', '/^child$/iu', '/^youth$/iu', '/^girl$/iu',
+        ];
+
+        $isVague = false;
+        foreach ($vaguePatterns as $pattern) {
+            if (preg_match($pattern, $subject) === 1) {
+                $isVague = true;
+                break;
+            }
+        }
+
+        if (!$isVague) {
+            return false;
+        }
+
+        // Check 1: Does the sentence itself provide specificity IMMEDIATELY after the subject?
+        // Only check the first few words after the subject, not the entire sentence.
+        // Qualifiers like country, city, or proper noun must come right after the subject.
+        $subjectPos = mb_stripos($sentence, $subject);
+        if ($subjectPos !== false) {
+            $afterSubject = mb_substr($sentence, $subjectPos + mb_strlen($subject));
+            // Only look at first ~40 chars (roughly 4-5 words) after subject
+            $afterSubjectWindow = mb_substr($afterSubject, 0, 40);
+
+            // Pattern: "السفارة السويدية في تونس" → " السويدية في تونس" qualifies
+            // Pattern: "السفارة أعلنت أنها..." → " أعلنت أنها..." does NOT qualify
+            if (preg_match('/^\s+(?:ال[\p{L}\p{N}]{2,}(?:\s+في\s+[\p{L}\p{N}]{2,})?|[A-Z][\p{L}\p{N}]{1,}(?:\s+[A-Z][\p{L}\p{N}]{1,})?)/u', $afterSubjectWindow)) {
+                return false;
+            }
+        }
+
+        // Check 2: Does sourceContext identify the source?
+        // Only real source/entity contexts may save a vague subject.
+        // Manual entries, CLI tests, admin text, or generic users must NOT save vague subjects.
+        $sourceType = (string) ($sourceContext['source_type'] ?? '');
+
+        $contextCanIdentifySubject = in_array($sourceType, [
+            'facebook_post',
+            'facebook_page',
+            'official_page',
+            'official_website',
+            'public_source',
+        ], true);
+
+        if ($contextCanIdentifySubject) {
+            $explicitName = $sourceContext['pageName']
+                ?? $sourceContext['sourceName']
+                ?? $sourceContext['organizationName']
+                ?? null;
+
+            if ($explicitName !== null && mb_strlen(trim((string) $explicitName)) > 2) {
+                return false;
+            }
+        }
+
+        // Subject is vague and no context saves it
+        return true;
+    }
+   
+    private function extractFactualAction(string $sentence): ?string
+    {
+        $actions = [
+            'أعلن', 'أعلنت', 'أعلنا', 'أعلنوا', 'أعلنّ',
+            'قرر', 'قررت', 'قرروا', 'قررن', 'قررتم',
+            'وقع', 'وقّع', 'وقعت', 'وقعوا', 'وقّعت',
+            'انضم', 'انضمت', 'انضموا', 'انضمّ', 'انضممت',
+            'استقال', 'استقالت', 'استقالوا', 'استقالا',
+            'عين', 'عيّن', 'عينت', 'عيّنت', 'عينوا', 'عيّنوا',
+            'ألغى', 'ألغت', 'ألغوا', 'ألغينا',
+            'أوقف', 'أوقفت', 'أوقفوا', 'أوقفنا', 'إيقاف',
+            'اعتقل', 'اعتقلت', 'اعتقلوا',
+            'حكم', 'حكمت', 'حكموا',
+            'نشر', 'نشرت', 'نشروا',
+            'أكد', 'أكدت', 'أكدوا', 'أكدنا',
+            'نفى', 'نفت', 'نفوا', 'نفينا',
+            'رفض', 'رفضت', 'رفضوا',
+            'وافق', 'وافقت', 'وافقوا',
+            'صادق', 'صادقت', 'صادقوا',
+            'أقر', 'أقرت', 'أقروا',
+            'أصدر', 'أصدرت', 'أصدروا',
+            'أنهى', 'أنهت', 'أنهوا',
+            'فسخ', 'فسخت', 'فسخوا',
+            'جدد', 'جددت', 'جددوا',
+            'تمديد', 'تجديد',
+            'فاز', 'فازت', 'فازوا',
+            'خسر', 'خسرت', 'خسروا',
+            'ارتفع', 'ارتفعت', 'ارتفعوا',
+            'انخفض', 'انخفضت', 'انخفضوا',
+            'توفي', 'توفيت', 'توفوا', 'وفاة',
+            'انتقل', 'انتقلت', 'انتقلوا',
+            'تعاقد', 'تعاقدت', 'تعاقدوا',
+            'اقترب', 'اقتربت', 'اقتربوا',
+            'حسم', 'حسمت', 'حسموا',
+            'تأجل', 'تأجلت', 'تأجلوا', 'تأجيل',
+            'أظهر', 'أظهرت', 'أظهروا',
+            'اكتشف', 'اكتشفت', 'اكتشفوا',
+            'أثبت', 'أثبتت', 'أثبتوا',
+            'بين', 'بينت', 'بينوا',
+            'أشار', 'أشارت', 'أشاروا',
+            'أفاد', 'أفادت', 'أفادوا',
+            'ذكر', 'ذكرت', 'ذكروا',
+            'أوضح', 'أوضحت', 'أوضحوا',
+            'announced', 'approved', 'signed', 'transferred', 'joined', 'launched',
+            'opened', 'closed', 'denied', 'confirmed', 'resigned', 'appointed',
+            'scheduled', 'postponed', 'cancelled', 'canceled', 'won', 'lost',
+            'increased', 'decreased', 'arrested', 'sentenced', 'published',
+            'created', 'removed', 'renewed', 'terminated', 'decided', 'agreed',
+            'found', 'discovered', 'showed', 'revealed', 'reported', 'claimed',
+            'stated', 'confirmed', 'rejected', 'approved', 'vetoed', 'passed',
+            'introduced', 'implemented', 'suspended', 'banned', 'lifted', 'imposed',
+            'declared', 'established', 'dissolved', 'merged', 'acquired', 'sold',
+            'bought', 'invested', 'funded', 'granted', 'awarded', 'nominated',
+            'elected', 'defeated', 'resigned', 'retired', 'died', 'injured',
+            'hospitalized', 'released', 'detained', 'charged', 'acquitted',
+            'convicted', 'pardoned', 'expelled', 'suspended', 'fined', 'sanctioned',
+        ];
+foreach ($actions as $action) {
+    $pattern = '/(?<![\p{L}\p{N}_])' . preg_quote($action, '/') . '(?![\p{L}\p{N}_])/iu';
+
+    if (preg_match($pattern, $sentence) === 1) {
+        return $action;
+    }
+}
+        
+
+        return null;
+    }
+
+    private function sentenceIsPureOpinion(string $sentence): bool
+    {
+        $opinionPatterns = [
+            '/\b(useless|terrible|bad|great|amazing|corrupt|shame|best|worst|beautiful|ugly|stupid|idiot|liar|pathetic|disgusting)\b/iu',
+            '/\b(خايب|كارثة|فضيحة|فاسد|فاسدين|طحين|طحانة|بارازيت|منحل|خونة|عار|مهازل|مهزلة|غبي|حمق|كذاب|حقير|مقرف)\b/iu',
+            '/\b(I think|I believe|In my opinion|IMO|personally|I feel|I guess|I suppose)\b/iu',
+            '/\b(أعتقد|أظن|برأيي|في رأيي|أحس|أشعر|على ما أعتقد)\b/iu',
+            '/\b(à mon avis|je pense|je crois|selon moi|personnellement)\b/iu',
+        ];
+
+        $hasOpinionMarker = false;
+        foreach ($opinionPatterns as $pattern) {
+            if (preg_match($pattern, $sentence) === 1) {
+                $hasOpinionMarker = true;
+                break;
+            }
+        }
+
+        if ($hasOpinionMarker) {
+            $hasStrongFact = $this->containsStrongFactVerb($sentence);
+            $hasDetail = $this->containsCheckableDetail($sentence);
+
+            if ($hasStrongFact && $hasDetail) {
+                return false;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private function buildClaimFromSentence(string $sentence, string $subject, string $action): ?string
+    {
+        $subjectPos = mb_stripos($sentence, $subject);
+        if ($subjectPos === false) {
+            $words = preg_split('/\s+/u', $sentence);
+            foreach ($words as $word) {
+                if ($this->normalizeTerm($word) === $this->normalizeTerm($subject)) {
+                    $subjectPos = mb_strpos($sentence, $word);
+                    $subject = $word;
+                    break;
+                }
+            }
+        }
+
+        if ($subjectPos === false) {
+            return null;
+        }
+
+        $claimStart = $subjectPos;
+        $claimText = mb_substr($sentence, $claimStart);
+
+        if (mb_strlen($claimText) > 200) {
+            $cutPoint = mb_strpos($claimText, '.', 180);
+            if ($cutPoint === false) {
+                $cutPoint = mb_strpos($claimText, '،', 180);
+            }
+            if ($cutPoint === false) {
+                $cutPoint = mb_strpos($claimText, ',', 180);
+            }
+            if ($cutPoint !== false && $cutPoint > 50) {
+                $claimText = mb_substr($claimText, 0, $cutPoint + 1);
+            }
+        }
+
+        $claimText = trim($claimText);
+
+        if (mb_strlen($claimText) < self::MIN_CLAIM_LENGTH) {
+            return null;
+        }
+
+        $claimText = preg_replace('/\s+/u', ' ', $claimText);
+
+        return $claimText;
+    }
+
+    private function scoreFallbackCandidates(array $candidates, string $originalText): ?string
+    {
+        if (empty($candidates)) {
+            return null;
+        }
+
+        $postTerms = $this->extractImportantTerms($originalText);
+        $best = null;
+        $bestScore = PHP_INT_MIN;
+
+        foreach ($candidates as $candidate) {
+            $score = 0;
+
+            $claimTerms = $this->extractImportantTerms($candidate);
+            $missing = array_diff($claimTerms, $postTerms);
+
+            $score += count($claimTerms) * 2;
+            $score -= count($missing) * 4;
+
+            if ($this->containsCheckableDetail($candidate)) {
+                $score += 5;
+            }
+
+            if ($this->containsStrongFactVerb($candidate)) {
+                $score += 3;
+            }
+
+            $len = mb_strlen($candidate);
+            if ($len < 30) {
+                $score -= 3;
+            }
+            if ($len > 300) {
+                $score -= 2;
+            }
+
+            if (preg_match('/^(ال[A-Z])/iu', $candidate)) {
+                $score += 1;
+            }
+
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $best = $candidate;
+            }
+        }
+
+        if ($bestScore < 0) {
+            return null;
+        }
+
+        return $best;
+    }
+
+    // ==================== AI CLAIM CLEANUP (with sourceContext) ====================
+
+    private function cleanExtractedClaims(array $claims, string $postText, array $sourceContext = []): array
+    {
+        $claims = array_values(array_filter(array_map(
+            fn ($claim) => $this->normalizeAiClaim($claim),
+            $claims
+        )));
 
         if (empty($claims)) {
-            return [self::NO_VERIFIABLE_CLAIM];
+            return [];
         }
 
-        $claims = $this->cleanExtractedClaims($claims, $postText);
+        $claims = $this->uniqueClaims($claims);
 
-        if (empty($claims)) {
-            return [self::NO_VERIFIABLE_CLAIM];
+        $postTerms = $this->extractImportantTerms($postText);
+        $filteredClaims = [];
+
+        foreach ($claims as $claim) {
+            if (!$this->claimHasReasonableAnchorInPost($claim, $postTerms)) {
+                continue;
+            }
+
+            if ($this->looksLikePureOpinionClaim($claim)) {
+                continue;
+            }
+
+            $claimSubject = $this->extractSubjectFromClaim($claim);
+            if ($claimSubject !== null && $this->isVagueSubject($claimSubject, $claim, $sourceContext)) {
+                continue;
+            }
+
+            $filteredClaims[] = $claim;
+        }
+
+        if (empty($filteredClaims)) {
+            return [];
+        }
+
+        $claims = $filteredClaims;
+
+        if (count($claims) <= 1) {
+            return $claims;
+        }
+
+        $claims = $this->removeSupportingDetailClaims($claims);
+
+        if (count($claims) <= 1) {
+            return $claims;
+        }
+
+        if ($this->claimsLookLikeSameStory($claims)) {
+            return [$this->selectMainClaim($claims, $postText)];
         }
 
         return array_slice($claims, 0, self::MAX_RETURNED_CLAIMS);
     }
+
+    private function extractSubjectFromClaim(string $claim): ?string
+    {
+        if (preg_match('/^(ال[\p{L}\p{N}_\-.]{2,})/u', $claim, $m)) {
+            return $m[1];
+        }
+
+        if (preg_match('/^([A-Z][\p{L}\p{N}_\-.]{2,}(?:\s+[A-Z][\p{L}\p{N}_\-.]{2,}){0,2})/u', $claim, $m)) {
+            return trim($m[1]);
+        }
+
+        return null;
+    }
+
+    // ==================== EXISTING METHODS (unchanged) ====================
 
     private function limitTextForAi(string $postText): string
     {
@@ -294,75 +817,6 @@ PROMPT;
             . "\n\n[... trimmed long post for AI token safety ...]\n\n"
             . mb_substr($postText, -$tailLength)
         );
-    }
-
-    private function claimsFromAiResult(array $result): array
-    {
-        $claims = [];
-
-        $mainClaim = $this->normalizeAiClaim($result['main_claim'] ?? null);
-
-        if ($mainClaim !== null) {
-            $claims[] = $mainClaim;
-        }
-
-        $secondaryClaims = $result['secondary_claims'] ?? [];
-
-        if (is_array($secondaryClaims)) {
-            foreach ($secondaryClaims as $secondaryClaim) {
-                $normalizedClaim = $this->normalizeAiClaim($secondaryClaim);
-
-                if ($normalizedClaim !== null) {
-                    $claims[] = $normalizedClaim;
-                }
-            }
-        }
-
-        /**
-         * Backward compatibility:
-         * If Groq returns the old format {"claims": []}, DeFake still works.
-         */
-        if (empty($claims)) {
-            $legacyClaims = $result['claims'] ?? [];
-
-            if (is_array($legacyClaims)) {
-                foreach ($legacyClaims as $legacyClaim) {
-                    $normalizedClaim = $this->normalizeAiClaim($legacyClaim);
-
-                    if ($normalizedClaim !== null) {
-                        $claims[] = $normalizedClaim;
-                    }
-                }
-            }
-        }
-
-        return array_values(array_unique($claims));
-    }
-
-    private function normalizeAiClaim(mixed $claim): ?string
-    {
-        if (is_array($claim)) {
-            $claim = $claim['claim']
-                ?? $claim['original_text']
-                ?? $claim['text']
-                ?? null;
-        }
-
-        if (!is_scalar($claim)) {
-            return null;
-        }
-
-        $claim = trim((string) $claim);
-
-        if ($claim === '') {
-            return null;
-        }
-
-        if (mb_strtoupper($claim) === self::NO_VERIFIABLE_CLAIM) {
-            return null;
-        }
-
-        return preg_replace('/\s+/u', ' ', $claim) ?? $claim;
     }
 
     private function prepareClaimExtractionText(string $postText): string
@@ -432,60 +886,69 @@ PROMPT;
         return false;
     }
 
-    private function cleanExtractedClaims(array $claims, string $postText): array
+    private function claimsFromAiResult(array $result): array
     {
-        $claims = array_values(array_filter(array_map(
-            fn ($claim) => $this->normalizeAiClaim($claim),
-            $claims
-        )));
+        $claims = [];
+
+        $mainClaim = $this->normalizeAiClaim($result['main_claim'] ?? null);
+
+        if ($mainClaim !== null) {
+            $claims[] = $mainClaim;
+        }
+
+        $secondaryClaims = $result['secondary_claims'] ?? [];
+
+        if (is_array($secondaryClaims)) {
+            foreach ($secondaryClaims as $secondaryClaim) {
+                $normalizedClaim = $this->normalizeAiClaim($secondaryClaim);
+
+                if ($normalizedClaim !== null) {
+                    $claims[] = $normalizedClaim;
+                }
+            }
+        }
 
         if (empty($claims)) {
-            return [];
-        }
+            $legacyClaims = $result['claims'] ?? [];
 
-        $claims = $this->uniqueClaims($claims);
+            if (is_array($legacyClaims)) {
+                foreach ($legacyClaims as $legacyClaim) {
+                    $normalizedClaim = $this->normalizeAiClaim($legacyClaim);
 
-        $postTerms = $this->extractImportantTerms($postText);
-        $filteredClaims = [];
-
-        foreach ($claims as $claim) {
-            if (!$this->claimHasReasonableAnchorInPost($claim, $postTerms)) {
-                continue;
+                    if ($normalizedClaim !== null) {
+                        $claims[] = $normalizedClaim;
+                    }
+                }
             }
-
-            if ($this->looksLikePureOpinionClaim($claim)) {
-                continue;
-            }
-
-            $filteredClaims[] = $claim;
         }
 
-        if (empty($filteredClaims)) {
-            return [];
+        return array_values(array_unique($claims));
+    }
+
+    private function normalizeAiClaim(mixed $claim): ?string
+    {
+        if (is_array($claim)) {
+            $claim = $claim['claim']
+                ?? $claim['original_text']
+                ?? $claim['text']
+                ?? null;
         }
 
-        $claims = $filteredClaims;
-
-        if (count($claims) <= 1) {
-            return $claims;
+        if (!is_scalar($claim)) {
+            return null;
         }
 
-        $claims = $this->removeSupportingDetailClaims($claims);
+        $claim = trim((string) $claim);
 
-        if (count($claims) <= 1) {
-            return $claims;
+        if ($claim === '') {
+            return null;
         }
 
-        /**
-         * If the AI returned main_claim + secondary_claims but they are really one story,
-         * keep only the main claim. Since claimsFromAiResult() puts main_claim first,
-         * this is safer than verifying repeated details.
-         */
-        if ($this->claimsLookLikeSameStory($claims)) {
-            return [$this->selectMainClaim($claims, $postText)];
+        if (mb_strtoupper($claim) === self::NO_VERIFIABLE_CLAIM) {
+            return null;
         }
 
-        return array_slice($claims, 0, self::MAX_RETURNED_CLAIMS);
+        return preg_replace('/\s+/u', ' ', $claim) ?? $claim;
     }
 
     private function uniqueClaims(array $claims): array
@@ -525,10 +988,6 @@ PROMPT;
 
         $missingTerms = array_diff($claimTerms, $postTerms);
 
-        /**
-         * Reject claims that add too many important words not found in the original post.
-         * This protects against AI adding names, clubs, places, dates, or facts from outside knowledge.
-         */
         if (count($claimTerms) >= 3 && count($missingTerms) > max(2, (int) floor(count($claimTerms) * 0.4))) {
             return false;
         }
@@ -543,11 +1002,6 @@ PROMPT;
             fn (string $claim) => !$this->looksLikeSupportingDetail($claim)
         ));
 
-        /**
-         * Safety:
-         * If every claim looks like a supporting detail, keep original claims.
-         * Example: a post only says negotiations are advanced. That may still be the main claim.
-         */
         if (empty($mainClaims)) {
             return $claims;
         }
@@ -631,10 +1085,6 @@ PROMPT;
             $score = count($claimTerms);
             $score -= count($missingTerms) * 3;
 
-            /**
-             * In the new AI format, index 0 is main_claim.
-             * Give it a bonus but still allow PHP to reject a bad main claim.
-             */
             if ($index === 0) {
                 $score += 4;
             }
@@ -693,19 +1143,14 @@ PROMPT;
         }
 
         $stopWords = [
-            // English
             'the', 'a', 'an', 'of', 'for', 'to', 'in', 'on', 'at', 'by', 'with',
             'from', 'that', 'this', 'these', 'those', 'and', 'or', 'but', 'is',
             'are', 'was', 'were', 'be', 'been', 'being', 'has', 'have', 'had',
             'will', 'would', 'could', 'should', 'may', 'might', 'new', 'about',
             'according', 'source', 'sources', 'said', 'reported', 'report',
-
-            // French
             'le', 'la', 'les', 'un', 'une', 'des', 'du', 'de', 'dans', 'sur',
             'avec', 'pour', 'par', 'et', 'ou', 'est', 'sont', 'sera', 'selon',
             'source', 'sources', 'journal', 'rapport',
-
-            // Arabic / Maghrebi Arabic
             'من', 'الى', 'إلى', 'على', 'في', 'عن', 'مع', 'هذا', 'هذه', 'ذلك',
             'تلك', 'الذي', 'التي', 'كان', 'كانت', 'يكون', 'سوف', 'قد', 'لقد',
             'قبل', 'بعد', 'خلال', 'دون', 'غير', 'فقط', 'حسب', 'مصادر',
