@@ -24,10 +24,11 @@ class ClaimVerifiabilityService
         $hasStrongAction = $this->containsAny($normalized, $this->strongFactualActions());
         $hasSoftAction = $this->containsAny($normalized, $this->softFactualActions());
         $hasCheckableDetail = $this->hasCheckableDetail($normalized);
+        $hasImplicitRelationshipDetail = $this->hasImplicitRelationshipDetail($normalized);
         $vaguenessLevel = $this->detectVaguenessLevel($normalized);
 
         $subjectPresent = $specificTermsCount >= 1;
-        $actionPresent = $hasStrongAction || $hasSoftAction;
+        $actionPresent = $hasStrongAction || $hasSoftAction || $hasImplicitRelationshipDetail;
 
         $claimType = $this->detectClaimType($normalized);
 
@@ -69,6 +70,27 @@ class ClaimVerifiabilityService
                 ['object/event/date/source/context'],
                 $claimType
             );
+        }
+
+        if ($hasImplicitRelationshipDetail && !$hasStrongAction && !$hasSoftAction) {
+            return [
+                'verifiable' => true,
+                'reason' => 'The claim contains a subject, entity, and concrete duration that imply a checkable affiliation or relationship.',
+                'missingElements' => [],
+                'claimType' => $claimType,
+                'subjectPresent' => $subjectPresent,
+                'actionPresent' => true,
+                'checkableDetailPresent' => true,
+                'vaguenessLevel' => $vaguenessLevel,
+                'signals' => [
+                    'specificTermsCount' => $specificTermsCount,
+                    'hasStrongAction' => $hasStrongAction,
+                    'hasSoftAction' => $hasSoftAction,
+                    'hasCheckableDetail' => true,
+                    'hasImplicitRelationshipDetail' => true,
+                    'specificTerms' => $specificTerms,
+                ],
+            ];
         }
 
         return [
@@ -218,6 +240,101 @@ class ClaimVerifiabilityService
             'communique', 'communiqué', 'decision', 'décision', 'document',
             'loi', 'tribunal', 'accord', 'contrat', 'rapport', 'resultat', 'résultat',
         ]);
+    }
+
+    private function hasImplicitRelationshipDetail(string $text): bool
+    {
+        if (!$this->hasConcreteMeasurableDetail($text)) {
+            return false;
+        }
+
+        foreach ($this->relationshipPatterns() as $pattern) {
+            if (preg_match($pattern, $text, $matches) !== 1) {
+                continue;
+            }
+
+            if (
+                $this->hasConcreteRelationshipSide($matches['left'] ?? '')
+                && $this->hasConcreteRelationshipSide($matches['right'] ?? '')
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function hasConcreteMeasurableDetail(string $text): bool
+    {
+        if (preg_match('/\b\d+(?:[.,]\d+)?\s*(?:%|percent|percentage|years?|seasons?|months?|weeks?|days?|hours?|usd|eur|dollars?|dinars?|tnd|million|billion)?\b/u', $text) === 1) {
+            return true;
+        }
+
+        if (preg_match('/\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(?:years?|seasons?|months?|weeks?|days?|hours?)\b/u', $text) === 1) {
+            return true;
+        }
+
+        return $this->containsAny($text, [
+            'today', 'yesterday', 'tomorrow', 'monday', 'tuesday', 'wednesday',
+            'thursday', 'friday', 'saturday', 'sunday',
+            'january', 'february', 'march', 'april', 'may', 'june', 'july',
+            'august', 'september', 'october', 'november', 'december',
+        ]);
+    }
+
+    private function hasConcreteRelationshipSide(string $text): bool
+    {
+        $words = preg_split('/[^\p{L}\p{N}.%]+/u', $text, -1, PREG_SPLIT_NO_EMPTY);
+
+        if (!$words) {
+            return false;
+        }
+
+        foreach ($words as $word) {
+            $term = $this->normalizeText($word);
+
+            if (mb_strlen($term) < 3) {
+                continue;
+            }
+
+            if (in_array($term, $this->genericRelationshipTerms(), true)) {
+                continue;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private function relationshipPatterns(): array
+    {
+        $detailBoundary = '(?:for|since|during|until|from|on|by|over|after|before|through|in)';
+
+        return [
+            '/\b(?P<left>.+?)\s+in\s+(?P<right>.+?)(?:\s+' . $detailBoundary . '\b|$)/u',
+            '/\b(?P<left>.+?)\s+with\s+(?P<right>.+?)(?:\s+' . $detailBoundary . '\b|$)/u',
+            '/\b(?P<left>.+?)\s+at\s+(?P<right>.+?)(?:\s+' . $detailBoundary . '\b|$)/u',
+            '/\b(?P<left>.+?)\s+part of\s+(?P<right>.+?)(?:\s+' . $detailBoundary . '\b|$)/u',
+            '/\b(?P<left>.+?)\s+linked to\s+(?P<right>.+?)(?:\s+' . $detailBoundary . '\b|$)/u',
+            '/\b(?P<left>.+?)\s+associated with\s+(?P<right>.+?)(?:\s+' . $detailBoundary . '\b|$)/u',
+            '/\b(?P<left>.+?)\s+member of\s+(?P<right>.+?)(?:\s+' . $detailBoundary . '\b|$)/u',
+            '/\b(?P<left>.+?)\s+belongs to\s+(?P<right>.+?)(?:\s+' . $detailBoundary . '\b|$)/u',
+        ];
+    }
+
+    private function genericRelationshipTerms(): array
+    {
+        return [
+            'the', 'this', 'that', 'these', 'those',
+            'someone', 'somebody', 'person', 'people',
+            'player', 'club', 'team', 'company', 'organization', 'organisation',
+            'entity', 'place', 'country', 'city',
+            'for', 'since', 'during', 'until', 'from', 'with', 'part', 'linked',
+            'associated', 'member', 'belongs',
+            'year', 'years', 'season', 'seasons', 'month', 'months', 'week', 'weeks',
+            'day', 'days', 'hour', 'hours',
+        ];
     }
 
     private function strongFactualActions(): array

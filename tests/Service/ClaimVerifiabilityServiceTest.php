@@ -205,5 +205,103 @@ final class ClaimVerifiabilityServiceTest extends TestCase
                 ],
             ],
         ];
+
+        yield 'implicit relationship duration claim with acronym entity should be accepted' => [
+            'Mo2men Rahmani in CSS for 2 years',
+            [
+                'verifiable' => true,
+                'reason' => 'The claim contains a subject, entity, and concrete duration that imply a checkable affiliation or relationship.',
+                'missingElements' => [],
+                'claimType' => 'general',
+                'subjectPresent' => true,
+                'actionPresent' => true,
+                'checkableDetailPresent' => true,
+                'vaguenessLevel' => 'low',
+                'signals' => [
+                    'hasStrongAction' => false,
+                    'hasSoftAction' => false,
+                    'hasCheckableDetail' => true,
+                ],
+            ],
+        ];
+
+        yield 'implicit relationship duration claim is generic and not football specific' => [
+            'Jane Doe with ACME for 2 years',
+            [
+                'verifiable' => true,
+                'reason' => 'The claim contains a subject, entity, and concrete duration that imply a checkable affiliation or relationship.',
+                'missingElements' => [],
+                'claimType' => 'general',
+                'subjectPresent' => true,
+                'actionPresent' => true,
+                'checkableDetailPresent' => true,
+                'vaguenessLevel' => 'low',
+                'signals' => [
+                    'hasStrongAction' => false,
+                    'hasSoftAction' => false,
+                    'hasCheckableDetail' => true,
+                ],
+            ],
+        ];
+
+        yield 'implicit relationship without duration is rejected' => [
+            'Mo2men Rahmani in CSS',
+            [
+                'verifiable' => false,
+                'reason' => 'The claim does not contain a concrete factual action or assertion.',
+                'missingElements' => ['action'],
+                'claimType' => 'general',
+                'subjectPresent' => true,
+                'actionPresent' => false,
+                'checkableDetailPresent' => false,
+                'vaguenessLevel' => 'high',
+                'signals' => [],
+            ],
+        ];
+
+        yield 'location-only relationship wording is rejected as ambiguous' => [
+            'Mo2men Rahmani in Tunisia',
+            [
+                'verifiable' => false,
+                'reason' => 'The claim does not contain a concrete factual action or assertion.',
+                'missingElements' => ['action'],
+                'claimType' => 'general',
+                'subjectPresent' => true,
+                'actionPresent' => false,
+                'checkableDetailPresent' => false,
+                'vaguenessLevel' => 'high',
+                'signals' => [],
+            ],
+        ];
+
+        yield 'vague relationship duration with generic entity is rejected' => [
+            'The player in a club for years',
+            [
+                'verifiable' => false,
+                'reason' => 'The claim does not contain a concrete factual action or assertion.',
+                'missingElements' => ['action'],
+                'claimType' => 'sports',
+                'subjectPresent' => true,
+                'actionPresent' => false,
+                'checkableDetailPresent' => false,
+                'vaguenessLevel' => 'high',
+                'signals' => [],
+            ],
+        ];
+
+        yield 'vague relationship duration with generic subject and entity is rejected' => [
+            'Someone with a company for years',
+            [
+                'verifiable' => false,
+                'reason' => 'The claim does not contain a concrete factual action or assertion.',
+                'missingElements' => ['action'],
+                'claimType' => 'business',
+                'subjectPresent' => true,
+                'actionPresent' => false,
+                'checkableDetailPresent' => false,
+                'vaguenessLevel' => 'high',
+                'signals' => [],
+            ],
+        ];
     }
 }
