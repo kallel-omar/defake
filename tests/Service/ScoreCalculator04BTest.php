@@ -9,7 +9,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use App\Service\EvidenceSourceMetrics04B;
 use App\Service\ScoreCalculator04B;
 use PHPUnit\Framework\TestCase;
-use ReflectionClass;
+
 
 final class ScoreCalculator04BTest extends TestCase
 {
@@ -259,11 +259,168 @@ public function testCalculateEvidenceMatchScoreReturnsCurrentScore(
             7,
         ];
     }
+        #[DataProvider('provideSourceAuthorityScoreCases')]
+    public function testCalculateSourceAuthorityScoreReturnsCurrentScore(
+        array $officialSource,
+        array $evidenceItems,
+        array $relevantIndexes,
+        int $expectedScore
+    ): void {
+        $calculator = $this->createCalculator();
 
-    private function createCalculator(): ScoreCalculator04B
+        self::assertSame(
+            $expectedScore,
+            $calculator->calculateSourceAuthorityScore(
+                $officialSource,
+                $evidenceItems,
+                $relevantIndexes
+            )
+        );
+    }
+
+    public static function provideSourceAuthorityScoreCases(): iterable
+    {
+        yield 'official trusted category with confidence 85 returns 25' => [
+            ['official' => true, 'confidence' => 85, 'category' => 'club'],
+            [],
+            [],
+            25,
+        ];
+
+        yield 'official trusted category with confidence 84 returns 20' => [
+            ['official' => true, 'confidence' => 84, 'category' => 'club'],
+            [],
+            [],
+            20,
+        ];
+
+        yield 'official untrusted category returns 20 even with high confidence' => [
+            ['official' => true, 'confidence' => 90, 'category' => 'media'],
+            [],
+            [],
+            20,
+        ];
+
+        yield 'official source with missing confidence and category returns 20' => [
+            ['official' => true],
+            [],
+            [],
+            20,
+        ];
+
+        yield 'non-official source with no evidence returns 0' => [
+            ['official' => false],
+            [],
+            [],
+            0,
+        ];
+
+        yield 'non-official confidence 90 returns 23' => [
+            ['official' => false],
+            [['confidenceScore' => 90]],
+            [],
+            23,
+        ];
+
+        yield 'non-official confidence 89 returns 18' => [
+            ['official' => false],
+            [['confidenceScore' => 89]],
+            [],
+            18,
+        ];
+
+        yield 'non-official confidence 75 returns 18' => [
+            ['official' => false],
+            [['confidenceScore' => 75]],
+            [],
+            18,
+        ];
+
+        yield 'non-official confidence 74 returns 14' => [
+            ['official' => false],
+            [['confidenceScore' => 74]],
+            [],
+            14,
+        ];
+
+        yield 'non-official confidence 60 returns 14' => [
+            ['official' => false],
+            [['confidenceScore' => 60]],
+            [],
+            14,
+        ];
+
+        yield 'non-official confidence 59 returns 9' => [
+            ['official' => false],
+            [['confidenceScore' => 59]],
+            [],
+            9,
+        ];
+
+        yield 'non-official confidence 40 returns 9' => [
+            ['official' => false],
+            [['confidenceScore' => 40]],
+            [],
+            9,
+        ];
+
+        yield 'non-official confidence 39 returns 5' => [
+            ['official' => false],
+            [['confidenceScore' => 39]],
+            [],
+            5,
+        ];
+
+        yield 'non-official confidence 20 returns 5' => [
+            ['official' => false],
+            [['confidenceScore' => 20]],
+            [],
+            5,
+        ];
+
+        yield 'non-official confidence 19 returns 2' => [
+            ['official' => false],
+            [['confidenceScore' => 19]],
+            [],
+            2,
+        ];
+
+        yield 'sourceScore fallback returns 23 when confidenceScore is missing' => [
+            ['official' => false],
+            [['sourceScore' => 99]],
+            [],
+            23,
+        ];
+
+        yield 'confidenceScore has priority over sourceScore even when confidenceScore is zero' => [
+            ['official' => false],
+            [['confidenceScore' => 0, 'sourceScore' => 99]],
+            [],
+            2,
+        ];
+
+        yield 'relevant indexes filter evidence before calculating max confidence' => [
+            ['official' => false],
+            [
+                ['confidenceScore' => 95],
+                ['confidenceScore' => 20],
+            ],
+            [1],
+            5,
+        ];
+
+        yield 'invalid relevant indexes return 0 because no relevant items are selected' => [
+            ['official' => false],
+            [['confidenceScore' => 95]],
+            [99],
+            0,
+        ];
+    }
+
+        private function createCalculator(): ScoreCalculator04B
     {
         return new ScoreCalculator04B(
-            $this->inertService(EvidenceSourceMetrics04B::class)
+            new EvidenceSourceMetrics04B()
         );
     }
 
@@ -278,8 +435,5 @@ public function testCalculateEvidenceMatchScoreReturnsCurrentScore(
      *
      * @return T
      */
-    private function inertService(string $className): object
-    {
-        return (new ReflectionClass($className))->newInstanceWithoutConstructor();
-    }
+    
 }
