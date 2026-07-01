@@ -227,7 +227,7 @@
 
                     <p class="text-muted mb-0">
                         DeFake classified this content as <strong>{{ displayVerdict }}</strong>.
-                        Fact-checking was skipped because the post is not a clear news claim.
+                        Fact-checking was skipped because the submitted content is not a clear, verifiable news claim.
                     </p>
                 </div>
 
@@ -235,7 +235,7 @@
 
                     <div class="col-md-6">
                         <div class="border rounded-4 p-4 h-100 bg-light">
-                            <h5 class="fw-bold mb-2">Post Type</h5>
+                            <h5 class="fw-bold mb-2">Content Type</h5>
 
                             <span class="badge bg-info fs-6 rounded-pill px-3">
                                 {{ displayVerdict }}
@@ -281,8 +281,12 @@
             <div class="col-md-4">
                 <div class="card shadow border-0 rounded-4 h-100">
                     <div class="card-body p-4">
-                        <h6 class="text-muted text-uppercase small fw-bold">Platform</h6>
-                        <h4 class="fw-bold mb-0">{{ postCheck.platform ?: 'Unknown' }}</h4>
+                        <h6 class="text-muted text-uppercase small fw-bold">
+                            {{ isTextCheck ? 'Input Type' : 'Platform' }}
+                        </h6>
+                        <h4 class="fw-bold mb-0">
+                            {{ isTextCheck ? 'Manual Text' : (postCheck.platform ?: 'Unknown') }}
+                        </h4>
                     </div>
                 </div>
             </div>
@@ -398,7 +402,7 @@
 
 <p class="text-muted small mb-4">
    DeFake combines evidence match, source authority, source independence, and risk safety.
-Safety rules may keep a post Suspicious when evidence is weak, unclear, or not strong enough for a safe trusted verdict.
+Safety rules may keep content Suspicious when evidence is weak, unclear, or not strong enough for a safe trusted verdict.
 </p>
 
                 {% set scores = [

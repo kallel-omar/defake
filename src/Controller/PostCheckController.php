@@ -14,8 +14,8 @@ final class PostCheckController extends AbstractController
     #[Route('/check/{id}', name: 'app_post_check_show')]
 public function show(PostCheck $postCheck): Response
 {
-    // DeFake analyses are based on public Facebook posts.
-    // Result pages are reusable so duplicate URL submissions can redirect safely.
+    // DeFake analyses can come from public Facebook posts or manually submitted text.
+    // Result pages are reusable so duplicate submissions can redirect safely.
     // User history remains private elsewhere, and admin debug data is still protected in Twig.
     return $this->render('post_check/show.html.twig', [
         'postCheck' => $postCheck,
