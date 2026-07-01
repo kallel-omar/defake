@@ -76,6 +76,12 @@ class PostCheck
     #[ORM\Column(length: 50, nullable: true)]
     private ?string $contentType = null;
 
+    #[ORM\Column(length: 80, nullable: true)]
+    private ?string $contextCountry = null;
+
+    #[ORM\Column(length: 50, nullable: true)]
+    private ?string $contextTopic = null;
+
     #[ORM\Column(length: 255, nullable: true)]
     private ?string $contentTitle = null;
 
@@ -367,6 +373,30 @@ class PostCheck
     public function setContentType(?string $contentType): static
     {
         $this->contentType = $contentType;
+
+        return $this;
+    }
+
+    public function getContextCountry(): ?string
+    {
+        return $this->contextCountry;
+    }
+
+    public function setContextCountry(?string $contextCountry): static
+    {
+        $this->contextCountry = $contextCountry;
+
+        return $this;
+    }
+
+    public function getContextTopic(): ?string
+    {
+        return $this->contextTopic;
+    }
+
+    public function setContextTopic(?string $contextTopic): static
+    {
+        $this->contextTopic = $contextTopic;
 
         return $this;
     }

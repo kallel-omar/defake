@@ -73,6 +73,44 @@
                             </div>
                         </div>
 
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6">
+                                <label for="context_country" class="form-label fw-semibold">
+                                    Country or region <span class="text-muted fw-normal">(optional)</span>
+                                </label>
+
+                                <select
+                                    id="context_country"
+                                    name="context_country"
+                                    class="form-select rounded-4">
+                                    {% for countryCode, countryLabel in countryOptions %}
+                                        <option value="{{ countryCode }}">{{ countryLabel }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label for="context_topic" class="form-label fw-semibold">
+                                    Topic <span class="text-muted fw-normal">(optional)</span>
+                                </label>
+
+                                <select
+                                    id="context_topic"
+                                    name="context_topic"
+                                    class="form-select rounded-4">
+                                    <option value="">Not sure</option>
+                                    <option value="sports">Sports</option>
+                                    <option value="politics">Politics</option>
+                                    <option value="health">Health</option>
+                                    <option value="business">Business</option>
+                                    <option value="technology">Technology</option>
+                                    <option value="legal">Legal</option>
+                                    <option value="weather">Weather</option>
+                                    <option value="entertainment">Entertainment</option>
+                                </select>
+                            </div>
+                        </div>
+
                         <button
                             type="submit"
                             class="btn btn-danger btn-lg w-100 rounded-pill"

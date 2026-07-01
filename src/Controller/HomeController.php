@@ -12,18 +12,31 @@ use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Intl\Countries;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Routing\Attribute\Route;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 
 final class HomeController extends AbstractController
 {
+    private const MANUAL_CONTEXT_TOPICS = [
+        'business',
+        'entertainment',
+        'health',
+        'legal',
+        'politics',
+        'sports',
+        'technology',
+        'weather',
+    ];
+
     #[Route('/', name: 'app_home', methods: ['GET'])]
     public function index(AnalysisAvailabilityService $analysisAvailability): Response
     {
         return $this->render('home/index.html.twig', [
             'aiAnalysisAvailable' => $analysisAvailability->isAiAnalysisAvailable(),
             'aiUnavailableMessage' => $analysisAvailability->getAiUnavailableMessage(),
+            'countryOptions' => $this->getManualContextCountryOptions(),
         ]);
     }
 
@@ -185,6 +198,12 @@ final class HomeController extends AbstractController
             $submittedText = $this->normalizeManualText(
                 (string) $request->request->get('claim_text')
             );
+            $contextCountry = $this->normalizeContextCountry(
+                (string) $request->request->get('context_country')
+            );
+            $contextTopic = $this->normalizeContextTopic(
+                (string) $request->request->get('context_topic')
+            );
 
             if ($submittedText === '') {
                 $this->addFlash('error', 'Please enter a claim or news text to check.');
@@ -204,8 +223,11 @@ final class HomeController extends AbstractController
                 return $this->redirectToRoute('app_text_check');
             }
 
-            $textHash = hash('sha256', mb_strtolower($submittedText));
-            $internalUrl = 'text://manual/' . substr($textHash, 0, 32);
+            $internalUrl = $this->buildManualTextInternalUrl(
+                $submittedText,
+                $contextCountry,
+                $contextTopic
+            );
             $urlHash = hash('sha256', $internalUrl);
 
             $existingPostCheck = $postCheckRepository->findOneBy([
@@ -246,6 +268,8 @@ final class HomeController extends AbstractController
             $postCheck->setUser($currentUser);
             $postCheck->setContent($submittedText);
             $postCheck->setContentType('manual_text');
+            $postCheck->setContextCountry($contextCountry);
+            $postCheck->setContextTopic($contextTopic);
             $postCheck->setStatus('processing');
             $postCheck->setProcessingStep('Text received');
             $postCheck->setScore(0);
@@ -290,6 +314,7 @@ final class HomeController extends AbstractController
     return $this->render('home/text_check.html.twig', [
         'aiAnalysisAvailable' => $analysisAvailability->isAiAnalysisAvailable(),
         'aiUnavailableMessage' => $analysisAvailability->getAiUnavailableMessage(),
+        'countryOptions' => $this->getManualContextCountryOptions(),
     ]);
 }
 
@@ -299,6 +324,56 @@ final class HomeController extends AbstractController
         $text = preg_replace('/\s+/u', ' ', $text) ?? '';
 
         return trim($text);
+    }
+
+    private function normalizeContextCountry(string $country): ?string
+    {
+        $country = mb_strtoupper(trim($country));
+
+        if ($country === '') {
+            return null;
+        }
+
+        return array_key_exists($country, $this->getManualContextCountryOptions()) ? $country : null;
+    }
+
+    private function getManualContextCountryOptions(): array
+    {
+        $countries = Countries::getNames('en');
+        asort($countries, SORT_NATURAL | SORT_FLAG_CASE);
+
+        return ['GLOBAL' => 'Global / Not country-specific'] + $countries;
+    }
+
+    private function normalizeContextTopic(string $topic): ?string
+    {
+        $topic = mb_strtolower(trim($topic));
+        $topic = str_replace('-', '_', $topic);
+
+        if ($topic === '') {
+            return null;
+        }
+
+        return in_array($topic, self::MANUAL_CONTEXT_TOPICS, true) ? $topic : null;
+    }
+
+    private function buildManualTextInternalUrl(string $submittedText, ?string $contextCountry, ?string $contextTopic): string
+    {
+        if ($contextCountry === null && $contextTopic === null) {
+            $textHash = hash('sha256', mb_strtolower($submittedText));
+
+            return 'text://manual/' . substr($textHash, 0, 32);
+        }
+
+        $hashInput = [
+            'text' => mb_strtolower($submittedText),
+            'country' => $contextCountry !== null ? mb_strtolower($contextCountry) : '',
+            'topic' => $contextTopic ?? '',
+        ];
+
+        $textHash = hash('sha256', (string) json_encode($hashInput, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+
+        return 'text://manual/' . substr($textHash, 0, 32);
     }
 
     private function detectPlatform(string $url): string
