@@ -75,8 +75,11 @@ class InternetEvidenceSearchService
             ];
         }
 
+        $rankedEvidenceItems = [];
+
         foreach (array_slice($rankedItems, 0, 5) as $rankedItem) {
             $item = $rankedItem['item'];
+            $rankedEvidenceItems[] = $item;
 
             $title = $item['title'] ?? 'No title';
             $snippet = $item['snippet'] ?? 'No snippet';
@@ -92,7 +95,7 @@ class InternetEvidenceSearchService
 
         return [
             'text' => implode("\n\n", $results),
-            'items' => $items,
+            'items' => $rankedEvidenceItems,
         ];
     }
 
