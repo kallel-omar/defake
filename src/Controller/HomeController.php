@@ -14,6 +14,7 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Routing\Attribute\Route;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 
 final class HomeController extends AbstractController
 {
@@ -78,7 +79,7 @@ final class HomeController extends AbstractController
                     $currentUser,
                     $isAdmin,
                     'app_facebook_check',
-                    'This link was already submitted. Showing existing result.',
+                    'This text was already checked. Showing existing result.',
                     $em
                 );
             }
@@ -119,7 +120,29 @@ final class HomeController extends AbstractController
                 $analysisUsageLimiter->registerUsage($currentUser, $ip);
             }
 
-            $em->flush();
+          
+             try {
+                $em->flush();
+            } catch (UniqueConstraintViolationException $e) {
+                $em->clear();
+
+                $existingPostCheck = $postCheckRepository->findOneBy([
+                    'urlHash' => $urlHash,
+                ]);
+
+                if ($existingPostCheck instanceof PostCheck) {
+                    return $this->redirectToExistingPostCheck(
+                        $existingPostCheck,
+                        $currentUser,
+                        $isAdmin,
+                        'app_facebook_check',
+                        'This link was already submitted. Showing existing result.',
+                        $em
+                    );
+                }
+
+                throw $e;
+            }
 
             $bus->dispatch(new AnalyzePostMessage($postCheck->getId()));
 
@@ -236,19 +259,39 @@ final class HomeController extends AbstractController
             if (!$isAdmin) {
                 $analysisUsageLimiter->registerUsage($currentUser, $ip);
             }
-
+            try {
             $em->flush();
+        } catch (UniqueConstraintViolationException $e) {
+            $em->clear();
 
-            $bus->dispatch(new AnalyzePostMessage($postCheck->getId()));
+            $existingPostCheck = $postCheckRepository->findOneBy([
+                'urlHash' => $urlHash,
+            ]);
 
-            return $this->redirectToCreatedPostCheck($postCheck, $currentUser, $isAdmin);
+            if ($existingPostCheck instanceof PostCheck) {
+                return $this->redirectToExistingPostCheck(
+                    $existingPostCheck,
+                    $currentUser,
+                    $isAdmin,
+                    'app_text_check',
+                    'This text was already checked. Showing existing result.',
+                    $em
+                );
+            }
+
+            throw $e;
         }
 
-        return $this->render('home/text_check.html.twig', [
-            'aiAnalysisAvailable' => $analysisAvailability->isAiAnalysisAvailable(),
-            'aiUnavailableMessage' => $analysisAvailability->getAiUnavailableMessage(),
-        ]);
+        $bus->dispatch(new AnalyzePostMessage($postCheck->getId()));
+
+        return $this->redirectToCreatedPostCheck($postCheck, $currentUser, $isAdmin);
     }
+
+    return $this->render('home/text_check.html.twig', [
+        'aiAnalysisAvailable' => $analysisAvailability->isAiAnalysisAvailable(),
+        'aiUnavailableMessage' => $analysisAvailability->getAiUnavailableMessage(),
+    ]);
+}
 
     private function normalizeManualText(string $text): string
     {
