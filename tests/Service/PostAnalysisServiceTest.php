@@ -189,6 +189,206 @@ final class PostAnalysisServiceTest extends TestCase
         }
     }
 
+    public function testPartialSupportWithoutDisplayableSourcesDoesNotRemainUserFacingPartialSupport(): void
+    {
+        $postText = 'Mo2men Rahmani signed with CSS for two years.';
+        $mainClaim = 'Mo2men Rahmani signed with CSS for two years.';
+
+        $result = $this->createEvidenceFlowService(
+            $postText,
+            $mainClaim,
+            [
+                [
+                    'title' => 'Mo2men Rahmani CSS two years',
+                    'snippet' => 'A weak page mentions Mo2men Rahmani and CSS.',
+                    'link' => 'https://unverified-example.test/story',
+                    'source' => 'Unverified Example',
+                ],
+            ],
+            [
+                'status' => 'PARTIALLY_SUPPORTED',
+                'supportCount' => 1,
+                'relevantIndexes' => [0],
+                'reason' => 'One search result appears related to the main claim.',
+            ]
+        )->analyze('text://manual/test', $postText);
+
+        self::assertSame([], $result['evidenceSources']);
+        self::assertSame('UNSUPPORTED', $result['evidenceDecision']);
+    }
+
+    public function testPartialSupportWithoutDisplayableSourcesDoesNotReturnLikelyFake(): void
+    {
+        $postText = 'Mo2men Rahmani signed with CSS for two years.';
+        $mainClaim = 'Mo2men Rahmani signed with CSS for two years.';
+
+        $result = $this->createEvidenceFlowService(
+            $postText,
+            $mainClaim,
+            [
+                [
+                    'title' => 'Mo2men Rahmani CSS two years',
+                    'snippet' => 'A weak page mentions Mo2men Rahmani and CSS.',
+                    'link' => 'https://unverified-example.test/story',
+                    'source' => 'Unverified Example',
+                ],
+            ],
+            [
+                'status' => 'PARTIALLY_SUPPORTED',
+                'supportCount' => 1,
+                'relevantIndexes' => [0],
+                'reason' => 'One search result appears related to the main claim.',
+            ]
+        )->analyze('text://manual/test', $postText);
+
+        self::assertNotSame('Likely Fake', $result['verdict']);
+    }
+
+    public function testPartialSupportWithoutDisplayableSourcesDoesNotMentionContradictionInExplanation(): void
+    {
+        $postText = 'Mo2men Rahmani signed with CSS for two years.';
+        $mainClaim = 'Mo2men Rahmani signed with CSS for two years.';
+
+        $result = $this->createEvidenceFlowService(
+            $postText,
+            $mainClaim,
+            [
+                [
+                    'title' => 'Mo2men Rahmani CSS two years',
+                    'snippet' => 'A weak page mentions Mo2men Rahmani and CSS.',
+                    'link' => 'https://unverified-example.test/story',
+                    'source' => 'Unverified Example',
+                ],
+            ],
+            [
+                'status' => 'PARTIALLY_SUPPORTED',
+                'supportCount' => 1,
+                'relevantIndexes' => [0],
+                'reason' => 'One search result appears related to the main claim.',
+            ]
+        )->analyze('text://manual/test', $postText);
+
+        self::assertStringNotContainsString('contradict', mb_strtolower((string) $result['explanation']));
+        self::assertStringNotContainsString('supporting evidence', mb_strtolower((string) $result['explanation']));
+        self::assertStringContainsString('usable/displayable', mb_strtolower((string) $result['explanation']));
+       }
+
+    public function testContradictedEvidenceWithDisplayableSourceCanStillReturnLikelyFake(): void
+    {
+        $postText = 'The company launched a new AI tool today.';
+        $mainClaim = 'The company launched a new AI tool today.';
+
+        $result = $this->createEvidenceFlowService(
+            $postText,
+            $mainClaim,
+            [
+                [
+                    'title' => 'Company denies launching new AI tool',
+                    'snippet' => 'The company says no AI tool was launched today.',
+                    'link' => 'https://reuters.com/technology/example',
+                    'source' => 'Reuters',
+                ],
+            ],
+            [
+                'status' => 'CONTRADICTED',
+                'supportCount' => 1,
+                'relevantIndexes' => [0],
+                'reason' => 'A source directly refutes the claim.',
+            ]
+        )->analyze('text://manual/test', $postText);
+
+        self::assertNotEmpty($result['evidenceSources']);
+        self::assertSame('CONTRADICTED', $result['evidenceDecision']);
+        self::assertSame('Likely Fake', $result['verdict']);
+        self::assertContains('DIRECT_REFUTATION', $result['capsApplied']);
+    }
+    public function testUnsupportedWithoutDisplayableSourcesDoesNotReturnLikelyFakeOrMentionContradiction(): void
+{
+    $postText = 'Mo2men Rahmani signed with CSS for two years.';
+    $mainClaim = 'Mo2men Rahmani signed with CSS for two years.';
+
+    $result = $this->createEvidenceFlowService(
+        $postText,
+        $mainClaim,
+        [],
+        [
+            'status' => 'UNSUPPORTED',
+            'supportCount' => 0,
+            'relevantIndexes' => [],
+            'reason' => 'DeFake did not find a usable evidence source for this claim.',
+        ]
+    )->analyze('text://manual/test', $postText);
+
+    self::assertSame([], $result['evidenceSources']);
+    self::assertSame('UNSUPPORTED', $result['evidenceDecision']);
+    self::assertNotSame('Likely Fake', $result['verdict']);
+    self::assertStringNotContainsString('contradict', mb_strtolower((string) $result['explanation']));
+    self::assertStringContainsString('usable/displayable', mb_strtolower((string) $result['explanation']));
+}
+    public function testSupportedEvidenceWithDisplayableSourcesKeepsSupportedBehavior(): void
+    {
+        $postText = 'The company launched a new AI tool today.';
+        $mainClaim = 'The company launched a new AI tool today.';
+
+        $result = $this->createEvidenceFlowService(
+            $postText,
+            $mainClaim,
+            [
+                [
+                    'title' => 'Company launched a new AI tool today',
+                    'snippet' => 'The new AI tool was announced today.',
+                    'link' => 'https://reuters.com/technology/example',
+                    'source' => 'Reuters',
+                ],
+                [
+                    'title' => 'New AI tool launched by company',
+                    'snippet' => 'The company introduced the AI tool today.',
+                    'link' => 'https://bbc.com/news/example',
+                    'source' => 'BBC',
+                ],
+            ],
+            [
+                'status' => 'SUPPORTED',
+                'supportCount' => 2,
+                'relevantIndexes' => [0, 1],
+                'reason' => 'Multiple search results appear relevant to the main claim.',
+            ]
+        )->analyze('text://manual/test', $postText);
+
+        self::assertCount(2, $result['evidenceSources']);
+        self::assertSame('SUPPORTED', $result['evidenceDecision']);
+        self::assertSame('Likely Trusted', $result['verdict']);
+    }
+
+    public function testPartialSupportWithDisplayableSourceKeepsPartialSupportBehavior(): void
+    {
+        $postText = 'The company launched a new AI tool today.';
+        $mainClaim = 'The company launched a new AI tool today.';
+
+        $result = $this->createEvidenceFlowService(
+            $postText,
+            $mainClaim,
+            [
+                [
+                    'title' => 'Company launched a new AI tool today',
+                    'snippet' => 'The new AI tool was announced today.',
+                    'link' => 'https://reuters.com/technology/example',
+                    'source' => 'Reuters',
+                ],
+            ],
+            [
+                'status' => 'PARTIALLY_SUPPORTED',
+                'supportCount' => 1,
+                'relevantIndexes' => [0],
+                'reason' => 'One search result appears related to the main claim.',
+            ]
+        )->analyze('text://manual/test', $postText);
+
+        self::assertCount(1, $result['evidenceSources']);
+        self::assertSame('PARTIALLY_SUPPORTED', $result['evidenceDecision']);
+        self::assertSame('Suspicious', $result['verdict']);
+    }
+
     /**
      * Creates an object that satisfies a concrete service type without calling its constructor.
      *
@@ -271,6 +471,80 @@ final class PostAnalysisServiceTest extends TestCase
                 'category' => 'unknown',
                 'confidence' => 0,
                 'reason' => 'No official source context.',
+            ]);
+
+        $evidenceSourceMetrics = new EvidenceSourceMetrics04B();
+        $scoreCalculator = new ScoreCalculator04B($evidenceSourceMetrics);
+
+        return new PostAnalysisService(
+            $internetEvidenceSearchService,
+            new EvidenceFormatterService(new SourceConfidenceService(), $officialSourceDetectorService),
+            new ScoreBreakdownBuilder(),
+            $scoreCalculator,
+            new VerdictDecisionService04B($scoreCalculator, $evidenceSourceMetrics),
+            new AnalysisExplanationService04B($evidenceSourceMetrics),
+            $officialSourceDetectorService,
+            $evidenceDecisionService,
+            $this->claimExtractionService,
+            $this->claimVerifiabilityService,
+        );
+    }
+
+    private function createEvidenceFlowService(
+        string $postText,
+        string $mainClaim,
+        array $rawEvidenceItems,
+        array $evidenceDecision,
+        array $officialSource = [
+            'official' => false,
+            'category' => 'unknown',
+            'confidence' => 0,
+            'reason' => 'No official source context.',
+        ],
+    ): PostAnalysisService {
+        $this->claimExtractionService
+            ->expects(self::once())
+            ->method('extract')
+            ->with($postText, [])
+            ->willReturn([$mainClaim]);
+
+        $this->claimVerifiabilityService
+            ->expects(self::once())
+            ->method('assess')
+            ->with($mainClaim, $postText)
+            ->willReturn([
+                'verifiable' => true,
+                'claimType' => 'general',
+                'reason' => 'The claim is verifiable.',
+            ]);
+
+        $internetEvidenceSearchService = $this->createMock(InternetEvidenceSearchService::class);
+        $internetEvidenceSearchService
+            ->expects(self::once())
+            ->method('search')
+            ->willReturn([
+                'text' => 'Mocked evidence search result.',
+                'items' => $rawEvidenceItems,
+            ]);
+
+        $evidenceDecisionService = $this->createMock(EvidenceDecisionService::class);
+        $evidenceDecisionService
+            ->expects(self::once())
+            ->method('decide')
+            ->with($mainClaim, $rawEvidenceItems)
+            ->willReturn($evidenceDecision);
+
+        $officialSourceDetectorService = $this->createMock(OfficialSourceDetectorService::class);
+        $officialSourceDetectorService
+            ->method('detect')
+            ->willReturn($officialSource);
+        $officialSourceDetectorService
+            ->method('evaluateEvidenceUrl')
+            ->willReturn([
+                'official' => true,
+                'category' => 'organization',
+                'confidence' => 60,
+                'reason' => 'Website source.',
             ]);
 
         $evidenceSourceMetrics = new EvidenceSourceMetrics04B();

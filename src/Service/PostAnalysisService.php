@@ -77,12 +77,35 @@ $internetEvidenceData = $this->internetEvidenceSearchService->search($searchQuer
 
         $officialSource = $this->officialSourceDetectorService->detect($sourceContext, $postText);
 
-      $formattedEvidenceSources = $this->evidenceFormatterService->formatSources(
+$formattedEvidenceSources = $this->evidenceFormatterService->formatSources(
     $evidenceItems,
     $mainClaim,
     $evidenceDecision['relevantIndexes'] ?? []
 );
 
+$noDisplayablePositiveEvidence = false;
+$rawEvidenceStatus = strtoupper((string) ($evidenceDecision['status'] ?? 'UNKNOWN'));
+
+if (
+    $formattedEvidenceSources === []
+    && in_array($rawEvidenceStatus, ['SUPPORTED', 'PARTIALLY_SUPPORTED'], true)
+) {
+    $noDisplayablePositiveEvidence = true;
+
+    $evidenceDecision['status'] = 'UNSUPPORTED';
+    $evidenceDecision['supportCount'] = 0;
+    $evidenceDecision['relevantIndexes'] = [];
+    $evidenceDecision['reason'] = sprintf(
+        'Evidence search returned %s, but no usable/displayable evidence source was available after source filtering.',
+        $rawEvidenceStatus
+    );
+}
+$noDisplayableNonContradictoryEvidence = $formattedEvidenceSources === []
+    && strtoupper((string) ($evidenceDecision['status'] ?? 'UNKNOWN')) !== 'CONTRADICTED';
+
+if ($noDisplayableNonContradictoryEvidence && !$noDisplayablePositiveEvidence) {
+    $evidenceDecision['reason'] = 'DeFake did not find any usable/displayable evidence source for this claim.';
+}
 $verificationContextSafe = $this->isVerificationContextSafe04B(
     $evidenceDecision,
     $formattedEvidenceSources,
@@ -113,6 +136,9 @@ $scoreBreakdown04B = $this->scoreBreakdownBuilder->build(
     'riskSafety' => 'Risk safety is estimated from the original post wording.',
 ]
 );
+if ($noDisplayableNonContradictoryEvidence) {
+    $scoreBreakdown04B['evidenceMatch']['reason'] = (string) ($evidenceDecision['reason'] ?? '');
+}
 
 $sourceDecision04B = $this->verdictDecisionService04B->detectSourceDecision(
     $officialSource,
@@ -129,7 +155,26 @@ $verdict04B = $this->verdictDecisionService04B->decide(
     $riskDecision04B,
     $officialSource
 );
+
+if ($noDisplayableNonContradictoryEvidence && ($verdict04B['verdict'] ?? '') === 'Likely Fake') {
+    $verdict04B['verdict'] = 'Suspicious';
+    $verdict04B['score'] = max(31, (int) ($verdict04B['score'] ?? 0));
+
+    $capsApplied = $verdict04B['capsApplied'] ?? [];
+
+    if (!is_array($capsApplied)) {
+        $capsApplied = [];
+    }
+
+    $capsApplied[] = 'NO_USABLE_DISPLAYABLE_EVIDENCE';
+    $verdict04B['capsApplied'] = array_values(array_unique($capsApplied));
+}
+
 $explanation04B = $this->analysisExplanationService04B->explainVerdict($verdict04B);
+
+if ($noDisplayableNonContradictoryEvidence) {
+    $explanation04B = 'DeFake did not find any usable/displayable evidence source that can support or refute this claim. The claim remains Suspicious until a clear displayable source is available.';
+}
         return [
            'score' => $verdict04B['score'],
 'verdict' => $verdict04B['verdict'],
