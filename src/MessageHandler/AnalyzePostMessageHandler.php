@@ -2,6 +2,7 @@
 
 namespace App\MessageHandler;
 
+use App\Entity\PostCheck;
 use App\Message\AnalyzePostMessage;
 use App\Repository\PostCheckRepository;
 use App\Service\ApifyFacebookExtractorService;
@@ -35,42 +36,59 @@ final class AnalyzePostMessageHandler
         try {
             $url = $postCheck->getUrl();
             $postText = trim((string) $postCheck->getContent());
+            $linkUrls = [];
+            $sourceContext = [];
 
             $postCheck->setStatus('processing');
-            $postCheck->setProcessingStep('Extracting Facebook post');
+            $postCheck->setProcessingStep(
+                $this->isManualTextCheck($postCheck)
+                    ? 'Preparing submitted text'
+                    : 'Extracting Facebook post'
+            );
             $this->em->flush();
 
-            $extraction = $this->facebookPostExtractorService->extract($url);
+            if ($this->isManualTextCheck($postCheck)) {
+                if ($postText === '') {
+                    $this->markAsFailed(
+                        $postCheck,
+                        'TEXT_MISSING',
+                        'No submitted text was available for analysis. Please submit the claim again.'
+                    );
 
-            if ($extraction['status'] === ApifyFacebookExtractorService::PRIVATE_POST) {
-                $this->markAsFailed(
-                    $postCheck,
-                    'PRIVATE_POST',
-                    'This Facebook post is not public. DeFake can only analyze publicly accessible posts.'
-                );
-
-                return;
-            }
-
-            $linkUrls = [];
-
-            if ($extraction['status'] === 'ok') {
-                $linkUrls = $this->filterExternalLinks($extraction['links'] ?? []);
-
-                if ($postText === '' && !empty($extraction['text'])) {
-                    $postText = trim((string) $extraction['text']);
-                    $postCheck->setContent($postText);
+                    return;
                 }
-            }
+            } else {
+                $extraction = $this->facebookPostExtractorService->extract((string) $url);
 
-            if ($postText === '') {
-                $this->markAsFailed(
-                    $postCheck,
-                    'EXTRACTION_FAILED',
-                    'Could not automatically extract the Facebook post text. Please paste the post text manually.'
-                );
+                if ($extraction['status'] === ApifyFacebookExtractorService::PRIVATE_POST) {
+                    $this->markAsFailed(
+                        $postCheck,
+                        'PRIVATE_POST',
+                        'This Facebook post is not public. DeFake can only analyze publicly accessible posts.'
+                    );
 
-                return;
+                    return;
+                }
+
+                if ($extraction['status'] === 'ok') {
+                    $linkUrls = $this->filterExternalLinks($extraction['links'] ?? []);
+                    $sourceContext = $extraction['sourceContext'] ?? [];
+
+                    if ($postText === '' && !empty($extraction['text'])) {
+                        $postText = trim((string) $extraction['text']);
+                        $postCheck->setContent($postText);
+                    }
+                }
+
+                if ($postText === '') {
+                    $this->markAsFailed(
+                        $postCheck,
+                        'EXTRACTION_FAILED',
+                        'Could not automatically extract the Facebook post text. Please paste the post text manually.'
+                    );
+
+                    return;
+                }
             }
 
             if (!empty($linkUrls)) {
@@ -100,9 +118,9 @@ final class AnalyzePostMessageHandler
             $this->em->flush();
 
             $result = $this->postAnalysisService->analyze(
-                $url,
+                (string) $url,
                 $postText,
-                $extraction['sourceContext'] ?? []
+                $sourceContext
             );
 
             $postCheck->setStatus('completed');
@@ -216,6 +234,17 @@ $postCheck->setVerificationReason(
         }
 
         return array_values(array_unique($externalLinks));
+    }
+
+    private function isManualTextCheck(PostCheck $postCheck): bool
+    {
+        $contentType = $postCheck->getContentType();
+        $platform = $postCheck->getPlatform();
+        $url = $postCheck->getUrl();
+
+        return $contentType === 'manual_text'
+            || $platform === 'Text'
+            || (is_string($url) && str_starts_with($url, 'text://manual/'));
     }
 
     private function markAsFailed($postCheck, string $verdict, string $explanation): void
