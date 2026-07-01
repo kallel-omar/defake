@@ -2,9 +2,13 @@
 
 namespace App\Service;
 
+use App\Exception\AnalysisConfigurationException;
+use App\Exception\AnalysisPermanentException;
+use App\Exception\AnalysisTransientException;
 use Psr\Log\LoggerInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
-use Throwable;
+use Symfony\Contracts\HttpClient\Exception\DecodingExceptionInterface;
+use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 
 class OfficialSourceDetectorService
 {
@@ -301,14 +305,52 @@ PROMPT;
                 'timeout' => 20,
             ]);
 
+            $statusCode = $response->getStatusCode();
+
+            if (in_array($statusCode, [408, 409, 425, 429, 500, 502, 503, 504], true)) {
+                throw new AnalysisTransientException(
+                    'Official source evidence search temporary API error: HTTP ' . $statusCode,
+                    'Evidence search is temporarily unavailable. DeFake will retry shortly.'
+                );
+            }
+
+            if (in_array($statusCode, [401, 403], true)) {
+                throw new AnalysisConfigurationException(
+                    'Official source evidence search authentication failed: HTTP ' . $statusCode,
+                    'Evidence search is not configured correctly. Please try again later.'
+                );
+            }
+
+            if ($statusCode >= 400) {
+                throw new AnalysisPermanentException(
+                    'Official source evidence search rejected the request: HTTP ' . $statusCode,
+                    'Evidence search rejected this request. Please try again with different content.'
+                );
+            }
+
             $data = $response->toArray(false);
-        } catch (Throwable $e) {
+        } catch (TransportExceptionInterface $e) {
             $this->logger->warning('Official source evidence search failed.', [
                 'pageName' => $pageName,
                 'exception' => $e,
             ]);
 
-            return 'Google evidence search failed.';
+            throw new AnalysisTransientException(
+                'Official source evidence search connection failed: ' . $e->getMessage(),
+                'Evidence search could not be reached. DeFake will retry shortly.',
+                previous: $e
+            );
+        } catch (DecodingExceptionInterface $e) {
+            $this->logger->warning('Official source evidence search returned invalid JSON.', [
+                'pageName' => $pageName,
+                'exception' => $e,
+            ]);
+
+            throw new AnalysisTransientException(
+                'Official source evidence search returned invalid JSON: ' . $e->getMessage(),
+                'Evidence search returned an invalid response. DeFake will retry shortly.',
+                previous: $e
+            );
         }
 
         $items = $data['organic'] ?? [];

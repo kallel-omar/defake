@@ -2,7 +2,12 @@
 
 namespace App\Service;
 
+use App\Exception\AnalysisConfigurationException;
+use App\Exception\AnalysisPermanentException;
+use App\Exception\AnalysisTransientException;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
+use Symfony\Contracts\HttpClient\Exception\DecodingExceptionInterface;
+use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 
 class ApifyFacebookExtractorService
 {
@@ -16,25 +21,69 @@ class ApifyFacebookExtractorService
 
     public function extract(string $url): array
     {
-       $response = $this->httpClient->request(
-    'POST',
-    'https://api.apify.com/v2/acts/apify~facebook-posts-scraper/run-sync-get-dataset-items',
-    [
-        'headers' => [
-            'Authorization' => 'Bearer ' . $this->apifyApiToken,
-        ],
-        'json' => [
-            'captionText' => false,
-            'resultsLimit' => 1,
-            'startUrls' => [
-                ['url' => $url],
-            ],
-        ],
-        'timeout' => 300,
-    ]
-);
+        if (trim($this->apifyApiToken) === '') {
+            throw new AnalysisConfigurationException(
+                'Apify API token is missing.',
+                'Facebook analysis is not configured correctly. Please try again later.'
+            );
+        }
 
-        $items = $response->toArray(false);
+        try {
+            $response = $this->httpClient->request(
+                'POST',
+                'https://api.apify.com/v2/acts/apify~facebook-posts-scraper/run-sync-get-dataset-items',
+                [
+                    'headers' => [
+                        'Authorization' => 'Bearer ' . $this->apifyApiToken,
+                    ],
+                    'json' => [
+                        'captionText' => false,
+                        'resultsLimit' => 1,
+                        'startUrls' => [
+                            ['url' => $url],
+                        ],
+                    ],
+                    'timeout' => 300,
+                ]
+            );
+
+            $statusCode = $response->getStatusCode();
+
+            if (in_array($statusCode, [408, 409, 425, 429, 500, 502, 503, 504], true)) {
+                throw new AnalysisTransientException(
+                    'Apify temporary API error: HTTP ' . $statusCode,
+                    'Facebook extraction is temporarily unavailable. DeFake will retry shortly.'
+                );
+            }
+
+            if (in_array($statusCode, [401, 403], true)) {
+                throw new AnalysisConfigurationException(
+                    'Apify authentication failed: HTTP ' . $statusCode,
+                    'Facebook analysis is not configured correctly. Please try again later.'
+                );
+            }
+
+            if ($statusCode >= 400) {
+                throw new AnalysisPermanentException(
+                    'Apify rejected the extraction request: HTTP ' . $statusCode,
+                    'Facebook extraction could not process this post. Please check the URL and try again.'
+                );
+            }
+
+            $items = $response->toArray(false);
+        } catch (TransportExceptionInterface $e) {
+            throw new AnalysisTransientException(
+                'Apify connection failed: ' . $e->getMessage(),
+                'Facebook extraction could not be reached. DeFake will retry shortly.',
+                previous: $e
+            );
+        } catch (DecodingExceptionInterface $e) {
+            throw new AnalysisTransientException(
+                'Apify returned invalid JSON: ' . $e->getMessage(),
+                'Facebook extraction returned an invalid response. DeFake will retry shortly.',
+                previous: $e
+            );
+        }
 
         if (!isset($items[0])) {
             return [

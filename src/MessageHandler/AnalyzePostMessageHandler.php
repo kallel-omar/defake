@@ -3,6 +3,8 @@
 namespace App\MessageHandler;
 
 use App\Entity\PostCheck;
+use App\Exception\AnalysisPermanentException;
+use App\Exception\AnalysisTransientException;
 use App\Message\AnalyzePostMessage;
 use App\Repository\PostCheckRepository;
 use App\Service\ApifyFacebookExtractorService;
@@ -188,6 +190,26 @@ $postCheck->setVerificationReason(
             }
 
             $this->em->flush();
+        } catch (AnalysisTransientException $e) {
+            $this->logger->warning('Post analysis encountered a transient failure; Messenger will retry.', [
+                'postCheckId' => $postCheck->getId(),
+                'exception' => $e,
+            ]);
+
+            throw $e;
+        } catch (AnalysisPermanentException $e) {
+            $this->logger->error('Post analysis failed permanently.', [
+                'postCheckId' => $postCheck->getId(),
+                'exception' => $e,
+            ]);
+
+            $this->markAsFailed(
+                $postCheck,
+                'FAILED',
+                $e->getSafeMessage()
+            );
+
+            return;
         } catch (\Throwable $e) {
             $this->logger->error('Post analysis failed.', [
                 'postCheckId' => $postCheck->getId(),

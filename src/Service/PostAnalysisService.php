@@ -2,7 +2,12 @@
 
 namespace App\Service;
 
+use App\Exception\AnalysisConfigurationException;
+use App\Exception\AnalysisPermanentException;
+use App\Exception\AnalysisTransientException;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
+use Symfony\Contracts\HttpClient\Exception\DecodingExceptionInterface;
+use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 
 class PostAnalysisService
 {
@@ -299,23 +304,67 @@ private function extractEvidenceTerms(string $text): array
 
     private function callSerper(string $type, string $query): array
     {
+        if (trim($this->serperApiKey) === '') {
+            throw new AnalysisConfigurationException(
+                'Serper API key is missing.',
+                'Evidence search is not configured correctly. Please try again later.'
+            );
+        }
+
         $endpoint = $type === 'news'
             ? 'https://google.serper.dev/news'
             : 'https://google.serper.dev/search';
 
-        $response = $this->httpClient->request('POST', $endpoint, [
-            'headers' => [
-                'X-API-KEY' => $this->serperApiKey,
-                'Content-Type' => 'application/json',
-            ],
-            'json' => [
-                'q' => $query,
-                'num' => 5,
-            ],
-            'timeout' => 30,
-        ]);
+        try {
+            $response = $this->httpClient->request('POST', $endpoint, [
+                'headers' => [
+                    'X-API-KEY' => $this->serperApiKey,
+                    'Content-Type' => 'application/json',
+                ],
+                'json' => [
+                    'q' => $query,
+                    'num' => 5,
+                ],
+                'timeout' => 30,
+            ]);
 
-        return $response->toArray(false);
+            $statusCode = $response->getStatusCode();
+
+            if (in_array($statusCode, [408, 409, 425, 429, 500, 502, 503, 504], true)) {
+                throw new AnalysisTransientException(
+                    'Serper temporary API error: HTTP ' . $statusCode,
+                    'Evidence search is temporarily unavailable. DeFake will retry shortly.'
+                );
+            }
+
+            if (in_array($statusCode, [401, 403], true)) {
+                throw new AnalysisConfigurationException(
+                    'Serper authentication failed: HTTP ' . $statusCode,
+                    'Evidence search is not configured correctly. Please try again later.'
+                );
+            }
+
+            if ($statusCode >= 400) {
+                throw new AnalysisPermanentException(
+                    'Serper rejected the request: HTTP ' . $statusCode,
+                    'Evidence search rejected this request. Please try again with different content.'
+                );
+            }
+
+            return $response->toArray(false);
+        } catch (TransportExceptionInterface $e) {
+            throw new AnalysisTransientException(
+                'Serper connection failed: ' . $e->getMessage(),
+                'Evidence search could not be reached. DeFake will retry shortly.',
+                previous: $e
+            );
+        } catch (DecodingExceptionInterface $e) {
+            throw new AnalysisTransientException(
+                'Serper returned invalid JSON: ' . $e->getMessage(),
+                'Evidence search returned an invalid response. DeFake will retry shortly.',
+                previous: $e
+            );
+        }
     }
 
 
