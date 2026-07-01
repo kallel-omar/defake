@@ -62,14 +62,14 @@ final class HomeController extends AbstractController
             ]);
 
             if ($existingPostCheck) {
-                $this->addFlash(
-                    'info',
-                    'This link was already submitted. Showing existing result.'
+                return $this->redirectToExistingPostCheck(
+                    $existingPostCheck,
+                    $currentUser,
+                    $isAdmin,
+                    'app_facebook_check',
+                    'This link was already submitted. Showing existing result.',
+                    $em
                 );
-
-                return $this->redirectToRoute('app_post_check_show', [
-                    'id' => $existingPostCheck->getId(),
-                ]);
             }
 
             if (!$isAdmin && !$analysisUsageLimiter->canAnalyze($currentUser, $ip)) {
@@ -100,6 +100,7 @@ final class HomeController extends AbstractController
             $postCheck->setVerdict('PROCESSING');
             $postCheck->setExplanation('Analysis is currently processing.');
             $postCheck->setCreatedAt(new \DateTimeImmutable());
+            $postCheck->ensurePublicToken();
 
             $em->persist($postCheck);
 
@@ -111,9 +112,7 @@ final class HomeController extends AbstractController
 
             $bus->dispatch(new AnalyzePostMessage($postCheck->getId()));
 
-            return $this->redirectToRoute('app_post_check_show', [
-                'id' => $postCheck->getId(),
-            ]);
+            return $this->redirectToCreatedPostCheck($postCheck, $currentUser, $isAdmin);
         }
 
         return $this->render('home/facebook_check.html.twig');
@@ -170,14 +169,14 @@ final class HomeController extends AbstractController
             ]);
 
             if ($existingPostCheck) {
-                $this->addFlash(
-                    'info',
-                    'This text was already checked. Showing existing result.'
+                return $this->redirectToExistingPostCheck(
+                    $existingPostCheck,
+                    $currentUser,
+                    $isAdmin,
+                    'app_text_check',
+                    'This text was already checked. Showing existing result.',
+                    $em
                 );
-
-                return $this->redirectToRoute('app_post_check_show', [
-                    'id' => $existingPostCheck->getId(),
-                ]);
             }
 
             if (!$isAdmin && !$analysisUsageLimiter->canAnalyze($currentUser, $ip)) {
@@ -209,6 +208,7 @@ final class HomeController extends AbstractController
             $postCheck->setVerdict('PROCESSING');
             $postCheck->setExplanation('Analysis is currently processing.');
             $postCheck->setCreatedAt(new \DateTimeImmutable());
+            $postCheck->ensurePublicToken();
 
             $em->persist($postCheck);
 
@@ -220,9 +220,7 @@ final class HomeController extends AbstractController
 
             $bus->dispatch(new AnalyzePostMessage($postCheck->getId()));
 
-            return $this->redirectToRoute('app_post_check_show', [
-                'id' => $postCheck->getId(),
-            ]);
+            return $this->redirectToCreatedPostCheck($postCheck, $currentUser, $isAdmin);
         }
 
         return $this->render('home/text_check.html.twig');
@@ -337,5 +335,64 @@ final class HomeController extends AbstractController
         }
 
         return true;
+    }
+
+    private function redirectToExistingPostCheck(
+        PostCheck $postCheck,
+        ?User $currentUser,
+        bool $isAdmin,
+        string $fallbackRoute,
+        string $successMessage,
+        EntityManagerInterface $em
+    ): Response {
+        if ($isAdmin || $this->isPostCheckOwner($postCheck, $currentUser)) {
+            $this->addFlash('info', $successMessage);
+
+            return $this->redirectToRoute('app_post_check_show', [
+                'id' => $postCheck->getId(),
+            ]);
+        }
+
+        if ($postCheck->getUser() === null) {
+            $postCheck->ensurePublicToken();
+            $em->flush();
+
+            $this->addFlash('info', $successMessage);
+
+            return $this->redirectToRoute('app_post_check_public_show', [
+                'id' => $postCheck->getId(),
+                'token' => $postCheck->getPublicToken(),
+            ]);
+        }
+
+        $this->addFlash(
+            'error',
+            'This content was already analyzed, but the existing result is private for another account.'
+        );
+
+        return $this->redirectToRoute($fallbackRoute);
+    }
+
+    private function redirectToCreatedPostCheck(PostCheck $postCheck, ?User $currentUser, bool $isAdmin): Response
+    {
+        if ($isAdmin || $this->isPostCheckOwner($postCheck, $currentUser)) {
+            return $this->redirectToRoute('app_post_check_show', [
+                'id' => $postCheck->getId(),
+            ]);
+        }
+
+        return $this->redirectToRoute('app_post_check_public_show', [
+            'id' => $postCheck->getId(),
+            'token' => $postCheck->getPublicToken(),
+        ]);
+    }
+
+    private function isPostCheckOwner(PostCheck $postCheck, ?User $currentUser): bool
+    {
+        $owner = $postCheck->getUser();
+
+        return $owner instanceof User
+            && $currentUser instanceof User
+            && $owner->getId() === $currentUser->getId();
     }
 }

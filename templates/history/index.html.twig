@@ -108,6 +108,8 @@
                                     class="d-inline"
                                     onsubmit="return confirm('Delete this analysis?');">
 
+                                    <input type="hidden" name="_token" value="{{ csrf_token('delete_check_' ~ check.id) }}">
+
                                     <button
                                         type="submit"
                                         class="btn btn-sm btn-outline-danger">

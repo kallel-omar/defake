@@ -8,6 +8,7 @@ use App\Service\ApifyFacebookExtractorService;
 use App\Service\ExternalLinkExtractorService;
 use App\Service\PostAnalysisService;
 use Doctrine\ORM\EntityManagerInterface;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
 #[AsMessageHandler]
@@ -19,6 +20,7 @@ final class AnalyzePostMessageHandler
         private readonly ApifyFacebookExtractorService $facebookPostExtractorService,
         private readonly PostAnalysisService $postAnalysisService,
         private readonly ExternalLinkExtractorService $externalLinkExtractorService,
+        private readonly LoggerInterface $logger,
     ) {
     }
 
@@ -169,10 +171,15 @@ $postCheck->setVerificationReason(
 
             $this->em->flush();
         } catch (\Throwable $e) {
+            $this->logger->error('Post analysis failed.', [
+                'postCheckId' => $postCheck->getId(),
+                'exception' => $e,
+            ]);
+
             $this->markAsFailed(
                 $postCheck,
                 'FAILED',
-                'Analysis failed: ' . $e->getMessage()
+                'Analysis failed because DeFake could not complete this request. Please try again later.'
             );
 
             return;

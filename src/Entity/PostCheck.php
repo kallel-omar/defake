@@ -7,6 +7,7 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity(repositoryClass: PostCheckRepository::class)]
+#[ORM\HasLifecycleCallbacks]
 class PostCheck
 {
     #[ORM\Id]
@@ -44,6 +45,9 @@ class PostCheck
 
     #[ORM\Column(length: 64, unique: true)]
     private ?string $urlHash = null;
+
+    #[ORM\Column(length: 64, unique: true)]
+    private ?string $publicToken = null;
 
     #[ORM\Column(nullable: true)]
     private ?int $evidenceScore = null;
@@ -227,6 +231,33 @@ class PostCheck
         $this->urlHash = $urlHash;
 
         return $this;
+    }
+
+    public function getPublicToken(): ?string
+    {
+        return $this->publicToken;
+    }
+
+    public function setPublicToken(?string $publicToken): static
+    {
+        $this->publicToken = $publicToken;
+
+        return $this;
+    }
+
+    public function ensurePublicToken(): string
+    {
+        if (!$this->publicToken) {
+            $this->publicToken = bin2hex(random_bytes(32));
+        }
+
+        return $this->publicToken;
+    }
+
+    #[ORM\PrePersist]
+    public function initializePublicToken(): void
+    {
+        $this->ensurePublicToken();
     }
 
     public function getEvidenceScore(): ?int

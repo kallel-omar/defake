@@ -2,6 +2,7 @@
 
 namespace App\Service;
 
+use Psr\Log\LoggerInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Throwable;
 
@@ -26,6 +27,7 @@ class OfficialSourceDetectorService
         private readonly HttpClientInterface $httpClient,
         private readonly GroqAiService $groqAiService,
         private readonly string $serperApiKey,
+        private readonly LoggerInterface $logger,
     ) {
     }
 
@@ -301,7 +303,12 @@ PROMPT;
 
             $data = $response->toArray(false);
         } catch (Throwable $e) {
-            return 'Google evidence search failed: ' . $e->getMessage();
+            $this->logger->warning('Official source evidence search failed.', [
+                'pageName' => $pageName,
+                'exception' => $e,
+            ]);
+
+            return 'Google evidence search failed.';
         }
 
         $items = $data['organic'] ?? [];
