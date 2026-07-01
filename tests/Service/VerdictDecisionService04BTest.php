@@ -37,6 +37,143 @@ final class VerdictDecisionService04BTest extends TestCase
         );
     }
 
+    #[DataProvider('provideDetectSourceDecisionCases')]
+    public function testDetectSourceDecisionReturnsExpectedLabel(
+        array $officialSource,
+        array $evidenceItems,
+        array $relevantIndexes,
+        string $expected
+    ): void {
+        $service = $this->createService();
+
+        self::assertSame(
+            $expected,
+            $service->detectSourceDecision($officialSource, $evidenceItems, $relevantIndexes)
+        );
+    }
+
+    public static function provideDetectSourceDecisionCases(): iterable
+    {
+        yield 'official source returns primary official immediately' => [
+            ['official' => true],
+            [],
+            [],
+            'PRIMARY_OFFICIAL',
+        ];
+
+        yield 'no evidence returns unknown' => [
+            ['official' => false],
+            [],
+            [],
+            'UNKNOWN',
+        ];
+
+        yield 'confidence score 90 returns top source' => [
+            ['official' => false],
+            [
+                ['confidenceScore' => 90],
+            ],
+            [],
+            'PRIMARY_DOCUMENT_OR_TOP_SOURCE',
+        ];
+
+        yield 'confidence score 75 returns reputable media' => [
+            ['official' => false],
+            [
+                ['confidenceScore' => 75],
+            ],
+            [],
+            'REPUTABLE_MEDIA',
+        ];
+
+        yield 'confidence score 60 returns known media' => [
+            ['official' => false],
+            [
+                ['confidenceScore' => 60],
+            ],
+            [],
+            'KNOWN_MEDIA',
+        ];
+
+        yield 'confidence score 40 returns weak media' => [
+            ['official' => false],
+            [
+                ['confidenceScore' => 40],
+            ],
+            [],
+            'WEAK_MEDIA',
+        ];
+
+        yield 'confidence score 20 returns social or low authority source' => [
+            ['official' => false],
+            [
+                ['confidenceScore' => 20],
+            ],
+            [],
+            'SOCIAL_OR_LOW_AUTHORITY_SOURCE',
+        ];
+
+        yield 'confidence score below 20 returns unknown' => [
+            ['official' => false],
+            [
+                ['confidenceScore' => 19],
+            ],
+            [],
+            'UNKNOWN',
+        ];
+
+        yield 'highest relevant confidence score decides label' => [
+            ['official' => false],
+            [
+                ['confidenceScore' => 20],
+                ['confidenceScore' => 75],
+                ['confidenceScore' => 40],
+            ],
+            [],
+            'REPUTABLE_MEDIA',
+        ];
+
+        yield 'source score is used when confidence score is missing' => [
+            ['official' => false],
+            [
+                ['sourceScore' => 75],
+            ],
+            [],
+            'REPUTABLE_MEDIA',
+        ];
+
+        yield 'confidence score overrides source score even when lower' => [
+            ['official' => false],
+            [
+                [
+                    'confidenceScore' => 0,
+                    'sourceScore' => 90,
+                ],
+            ],
+            [],
+            'UNKNOWN',
+        ];
+
+        yield 'relevant indexes select only matching evidence items' => [
+            ['official' => false],
+            [
+                ['confidenceScore' => 90],
+                ['confidenceScore' => 40],
+            ],
+            [1],
+            'WEAK_MEDIA',
+        ];
+
+        yield 'missing relevant indexes return unknown' => [
+            ['official' => false],
+            [
+                ['confidenceScore' => 90],
+            ],
+            [5],
+            'UNKNOWN',
+        ];
+    }
+
     public static function provideDecideCases(): iterable
     {
         yield 'not verifiable claim returns NOT_VERIFIABLE immediately' => [
