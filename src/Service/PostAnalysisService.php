@@ -22,7 +22,7 @@ class PostAnalysisService
 {
     $originalPostText = $postText;
 
-    $claims = $this->claimExtractionService->extract($postText);
+    $claims = $this->claimExtractionService->extract($postText, $analysisContext);
     $mainClaim = trim((string) ($claims[0] ?? ''));
 
     $claimVerifiability = $this->claimVerifiabilityService->assess($mainClaim, $originalPostText);

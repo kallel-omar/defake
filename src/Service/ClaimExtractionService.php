@@ -25,7 +25,7 @@ class ClaimExtractionService
     ) {
     }
 
-    public function extract(string $postText): array
+    public function extract(string $postText, array $analysisContext = []): array
     {
         $postText = trim($postText);
 
@@ -236,6 +236,8 @@ Do not return markdown.
 Do not return text outside JSON.
 PROMPT;
 
+        $contextPrompt = $this->buildAnalysisContextPrompt($analysisContext);
+
         $content = $this->groqAiService->ask([
             [
                 'role' => 'system',
@@ -243,7 +245,7 @@ PROMPT;
             ],
             [
                 'role' => 'user',
-                'content' => $prompt . "\n\nPost:\n" . $claimExtractionText,
+                'content' => $prompt . $contextPrompt . "\n\nPost:\n" . $claimExtractionText,
             ],
         ]);
 
@@ -269,7 +271,7 @@ PROMPT;
             return [self::NO_VERIFIABLE_CLAIM];
         }
 
-        $claims = $this->cleanExtractedClaims($claims, $postText);
+        $claims = $this->cleanExtractedClaims($claims, $postText, $analysisContext);
 
         if (empty($claims)) {
             return [self::NO_VERIFIABLE_CLAIM];
@@ -337,6 +339,30 @@ PROMPT;
         }
 
         return array_values(array_unique($claims));
+    }
+
+    private function buildAnalysisContextPrompt(array $analysisContext): string
+    {
+        $contextLines = [];
+        $country = strtoupper(trim((string) ($analysisContext['country'] ?? '')));
+        $topic = strtolower(trim((string) ($analysisContext['topic'] ?? '')));
+
+        if ($country !== '' && $country !== 'GLOBAL') {
+            $contextLines[] = '- country: ' . $country;
+        }
+
+        if ($topic !== '') {
+            $contextLines[] = '- topic: ' . $topic;
+        }
+
+        if ($contextLines === []) {
+            return '';
+        }
+
+        return "\n\nManual context hints for understanding ambiguous shorthand only."
+            . "\nDo not copy these hints into the claim unless the original post says them."
+            . "\nDo not use context to change numbers, dates, entities, denial/announcement meaning, or certainty."
+            . "\n" . implode("\n", $contextLines);
     }
 
     private function normalizeAiClaim(mixed $claim): ?string
@@ -432,7 +458,7 @@ PROMPT;
         return false;
     }
 
-    private function cleanExtractedClaims(array $claims, string $postText): array
+    private function cleanExtractedClaims(array $claims, string $postText, array $analysisContext = []): array
     {
         $claims = array_values(array_filter(array_map(
             fn ($claim) => $this->normalizeAiClaim($claim),
@@ -453,7 +479,7 @@ PROMPT;
                 continue;
             }
 
-            if ($this->claimIntroducesCriticalAnchor($claim, $postText)) {
+            if ($this->claimIntroducesCriticalAnchor($claim, $postText, $analysisContext)) {
                 continue;
             }
 
@@ -540,9 +566,13 @@ PROMPT;
         return true;
     }
 
-    private function claimIntroducesCriticalAnchor(string $claim, string $postText): bool
+    private function claimIntroducesCriticalAnchor(string $claim, string $postText, array $analysisContext = []): bool
     {
         if ($this->introducesMissingAnchor($this->extractNumberAnchors($claim), $this->extractNumberAnchors($postText))) {
+            return true;
+        }
+
+        if ($this->introducesMissingAnchor($this->extractDateAnchors($claim), $this->extractDateAnchors($postText))) {
             return true;
         }
 
@@ -550,7 +580,20 @@ PROMPT;
             return true;
         }
 
-        if ($this->introducesMissingAnchor($this->extractCriticalMeaningAnchors($claim), $this->extractCriticalMeaningAnchors($postText))) {
+        $claimMeaningAnchors = $this->extractCriticalMeaningAnchors($claim);
+        $postMeaningAnchors = $this->extractCriticalMeaningAnchors($postText);
+        $missingMeaningAnchors = array_values(array_diff($claimMeaningAnchors, $postMeaningAnchors));
+
+        if (
+            $missingMeaningAnchors !== []
+            && !$this->contextAllowsMissingMeaningAnchors(
+                $missingMeaningAnchors,
+                $claim,
+                $postText,
+                $analysisContext,
+                $postMeaningAnchors
+            )
+        ) {
             return true;
         }
 
@@ -574,6 +617,20 @@ PROMPT;
 
         return array_values(array_unique(array_map(
             static fn (string $anchor) => str_replace(' ', '', mb_strtolower($anchor)),
+            $matches[0]
+        )));
+    }
+
+    private function extractDateAnchors(string $text): array
+    {
+        $pattern = '/\b(today|yesterday|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december)\b/iu';
+
+        if (preg_match_all($pattern, $text, $matches) !== 1) {
+            return [];
+        }
+
+        return array_values(array_unique(array_map(
+            static fn (string $anchor) => mb_strtolower($anchor),
             $matches[0]
         )));
     }
@@ -625,6 +682,122 @@ PROMPT;
         }
 
         return $anchors;
+    }
+
+    private function contextAllowsMissingMeaningAnchors(
+        array $missingMeaningAnchors,
+        string $claim,
+        string $postText,
+        array $analysisContext,
+        array $postMeaningAnchors
+    ): bool {
+        $topic = strtolower(trim((string) ($analysisContext['topic'] ?? '')));
+
+        if ($topic !== 'sports') {
+            return false;
+        }
+
+        if (array_diff($missingMeaningAnchors, ['finalized_signing']) !== []) {
+            return false;
+        }
+
+        if ($postMeaningAnchors !== []) {
+            return false;
+        }
+
+        if (!$this->isImplicitRelationshipDetailClaim($postText)) {
+            return false;
+        }
+
+        return preg_match('/\b(signed|signs)\b/iu', $claim) === 1;
+    }
+
+    private function isImplicitRelationshipDetailClaim(string $text): bool
+    {
+        $normalized = mb_strtolower($text);
+
+        if (!$this->containsConcreteMeasurableDetail($normalized)) {
+            return false;
+        }
+
+        foreach ($this->relationshipPatterns() as $pattern) {
+            if (preg_match($pattern, $normalized, $matches) !== 1) {
+                continue;
+            }
+
+            if (
+                $this->hasConcreteRelationshipSide($matches['left'] ?? '')
+                && $this->hasConcreteRelationshipSide($matches['right'] ?? '')
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function containsConcreteMeasurableDetail(string $text): bool
+    {
+        if (preg_match('/\b\d+(?:[.,]\d+)?\s*(?:%|percent|percentage|years?|seasons?|months?|weeks?|days?|hours?|usd|eur|dollars?|dinars?|tnd|million|billion)?\b/u', $text) === 1) {
+            return true;
+        }
+
+        return preg_match('/\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(?:years?|seasons?|months?|weeks?|days?|hours?)\b/u', $text) === 1;
+    }
+
+    private function hasConcreteRelationshipSide(string $text): bool
+    {
+        $words = preg_split('/[^\p{L}\p{N}.%]+/u', $text, -1, PREG_SPLIT_NO_EMPTY);
+
+        if (!$words) {
+            return false;
+        }
+
+        foreach ($words as $word) {
+            $term = $this->normalizeTerm((string) $word);
+
+            if (mb_strlen($term) < 3) {
+                continue;
+            }
+
+            if (in_array($term, $this->genericRelationshipTerms(), true)) {
+                continue;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private function relationshipPatterns(): array
+    {
+        $detailBoundary = '(?:for|since|during|until|from|on|by|over|after|before|through|in)';
+
+        return [
+            '/\b(?P<left>.+?)\s+in\s+(?P<right>.+?)(?:\s+' . $detailBoundary . '\b|$)/u',
+            '/\b(?P<left>.+?)\s+with\s+(?P<right>.+?)(?:\s+' . $detailBoundary . '\b|$)/u',
+            '/\b(?P<left>.+?)\s+at\s+(?P<right>.+?)(?:\s+' . $detailBoundary . '\b|$)/u',
+            '/\b(?P<left>.+?)\s+part of\s+(?P<right>.+?)(?:\s+' . $detailBoundary . '\b|$)/u',
+            '/\b(?P<left>.+?)\s+linked to\s+(?P<right>.+?)(?:\s+' . $detailBoundary . '\b|$)/u',
+            '/\b(?P<left>.+?)\s+associated with\s+(?P<right>.+?)(?:\s+' . $detailBoundary . '\b|$)/u',
+            '/\b(?P<left>.+?)\s+member of\s+(?P<right>.+?)(?:\s+' . $detailBoundary . '\b|$)/u',
+            '/\b(?P<left>.+?)\s+belongs to\s+(?P<right>.+?)(?:\s+' . $detailBoundary . '\b|$)/u',
+        ];
+    }
+
+    private function genericRelationshipTerms(): array
+    {
+        return [
+            'the', 'this', 'that', 'these', 'those',
+            'someone', 'somebody', 'person', 'people',
+            'player', 'club', 'team', 'company', 'organization', 'organisation',
+            'entity', 'place', 'country', 'city',
+            'for', 'since', 'during', 'until', 'from', 'with', 'part', 'linked',
+            'associated', 'member', 'belongs',
+            'year', 'years', 'season', 'seasons', 'month', 'months', 'week', 'weeks',
+            'day', 'days', 'hour', 'hours',
+        ];
     }
 
     private function removeSupportingDetailClaims(array $claims): array

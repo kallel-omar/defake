@@ -47,7 +47,7 @@ final class PostAnalysisServiceTest extends TestCase
         $this->claimExtractionService
             ->expects(self::once())
             ->method('extract')
-            ->with($postText)
+            ->with($postText, [])
             ->willReturn(['']);
 
         $this->claimVerifiabilityService
@@ -104,12 +104,14 @@ final class PostAnalysisServiceTest extends TestCase
         $mainClaim = 'Mo2men Rahmani signed for two years.';
         $capturedQuery = '';
 
-        $service = $this->createSearchQueryCapturingService($postText, $mainClaim, $capturedQuery);
-
-        $service->analyze('text://manual/test', $postText, [], [
+        $analysisContext = [
             'country' => 'TN',
             'topic' => 'sports',
-        ]);
+        ];
+
+        $service = $this->createSearchQueryCapturingService($postText, $mainClaim, $capturedQuery, $analysisContext);
+
+        $service->analyze('text://manual/test', $postText, [], $analysisContext);
 
         self::assertStringContainsString("Claim to verify:\n" . $mainClaim, $capturedQuery);
         self::assertStringContainsString('Context country: TN', $capturedQuery);
@@ -122,12 +124,14 @@ final class PostAnalysisServiceTest extends TestCase
         $mainClaim = 'Mo2men Rahmani signed for two years.';
         $capturedQuery = '';
 
-        $service = $this->createSearchQueryCapturingService($postText, $mainClaim, $capturedQuery);
-
-        $service->analyze('text://manual/test', $postText, [], [
+        $analysisContext = [
             'country' => 'GLOBAL',
             'topic' => 'sports',
-        ]);
+        ];
+
+        $service = $this->createSearchQueryCapturingService($postText, $mainClaim, $capturedQuery, $analysisContext);
+
+        $service->analyze('text://manual/test', $postText, [], $analysisContext);
 
         self::assertStringNotContainsString('Context country:', $capturedQuery);
         self::assertStringNotContainsString('GLOBAL', $capturedQuery);
@@ -139,7 +143,7 @@ final class PostAnalysisServiceTest extends TestCase
         $mainClaim = 'Mo2men Rahmani signed for two years.';
         $capturedQuery = '';
 
-        $service = $this->createSearchQueryCapturingService($postText, $mainClaim, $capturedQuery);
+        $service = $this->createSearchQueryCapturingService($postText, $mainClaim, $capturedQuery, []);
 
         $service->analyze('text://manual/test', $postText, [], []);
 
@@ -152,12 +156,14 @@ final class PostAnalysisServiceTest extends TestCase
         $mainClaim = 'Mo2men Rahmani signed for two years.';
         $capturedQuery = '';
 
-        $service = $this->createSearchQueryCapturingService($postText, $mainClaim, $capturedQuery);
-
-        $service->analyze('text://manual/test', $postText, [], [
+        $analysisContext = [
             'country' => 'TN',
             'topic' => 'sports',
-        ]);
+        ];
+
+        $service = $this->createSearchQueryCapturingService($postText, $mainClaim, $capturedQuery, $analysisContext);
+
+        $service->analyze('text://manual/test', $postText, [], $analysisContext);
 
         self::assertStringNotContainsString('Tunisia', $mainClaim);
         self::assertStringNotContainsString('sports', mb_strtolower($mainClaim));
@@ -203,12 +209,13 @@ final class PostAnalysisServiceTest extends TestCase
     private function createSearchQueryCapturingService(
         string $postText,
         string $mainClaim,
-        string &$capturedQuery
+        string &$capturedQuery,
+        array $expectedAnalysisContext
     ): PostAnalysisService {
         $this->claimExtractionService
             ->expects(self::once())
             ->method('extract')
-            ->with($postText)
+            ->with($postText, $expectedAnalysisContext)
             ->willReturn([$mainClaim]);
 
         $this->claimVerifiabilityService

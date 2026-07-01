@@ -123,6 +123,63 @@ final class ClaimExtractionServiceTest extends TestCase
         self::assertSame([$mainClaim], $result);
     }
 
+    public function testSportsContextAllowsInferredSigningForImplicitRelationshipDetailClaim(): void
+    {
+        $postText = 'Mo2men Rahmani in css for 2 years';
+        $mainClaim = 'Mo2men Rahmani signed with CSS for 2 years';
+
+        $result = $this->serviceWithAiResponse($this->aiResponse([
+            'content_type' => 'claim',
+            'fact_checkable' => true,
+            'summary' => 'The post says Mo2men Rahmani is linked to css for two years.',
+            'reason' => 'Sports context makes the implicit relationship detail checkable.',
+            'main_claim' => $mainClaim,
+            'secondary_claims' => [],
+        ]))->extract($postText, [
+            'country' => 'TN',
+            'topic' => 'sports',
+        ]);
+
+        self::assertSame([$mainClaim], $result);
+    }
+
+    public function testInferredSigningWithoutSportsContextIsRejectedAsAddedActionDrift(): void
+    {
+        $postText = 'Mo2men Rahmani in css for 2 years';
+        $mainClaim = 'Mo2men Rahmani signed with CSS for 2 years';
+
+        $result = $this->serviceWithAiResponse($this->aiResponse([
+            'content_type' => 'claim',
+            'fact_checkable' => true,
+            'summary' => 'The post says Mo2men Rahmani is linked to css for two years.',
+            'reason' => 'The AI inferred a signing action.',
+            'main_claim' => $mainClaim,
+            'secondary_claims' => [],
+        ]))->extract($postText);
+
+        self::assertSame([self::NO_VERIFIABLE_CLAIM], $result);
+    }
+
+    public function testSportsContextDoesNotAllowInferredSigningWithoutConcreteRelationshipDetail(): void
+    {
+        $postText = 'Mo2men Rahmani in css';
+        $mainClaim = 'Mo2men Rahmani signed with CSS';
+
+        $result = $this->serviceWithAiResponse($this->aiResponse([
+            'content_type' => 'claim',
+            'fact_checkable' => true,
+            'summary' => 'The post mentions Mo2men Rahmani and css.',
+            'reason' => 'The AI inferred a signing action.',
+            'main_claim' => $mainClaim,
+            'secondary_claims' => [],
+        ]))->extract($postText, [
+            'country' => 'TN',
+            'topic' => 'sports',
+        ]);
+
+        self::assertSame([self::NO_VERIFIABLE_CLAIM], $result);
+    }
+
     #[DataProvider('provideClaimDriftCases')]
     public function testRejectsClaimDrift(string $postText, string $driftedClaim): void
     {
@@ -155,7 +212,53 @@ final class ClaimExtractionServiceTest extends TestCase
             'The player signed with Club A for two seasons.',
         ];
 
+        yield 'changed date word' => [
+            'The president will visit France on Monday.',
+            'The president will visit France on Tuesday.',
+        ];
+
         yield 'changed short country entity' => [
+            'US approved new sanctions today.',
+            'UK approved new sanctions today.',
+        ];
+    }
+
+    #[DataProvider('provideClaimDriftCasesThatContextMustNotAllow')]
+    public function testSportsContextDoesNotAllowCriticalClaimDrift(string $postText, string $driftedClaim): void
+    {
+        $result = $this->serviceWithAiResponse($this->aiResponse([
+            'content_type' => 'claim',
+            'fact_checkable' => true,
+            'summary' => 'The post contains a factual claim.',
+            'reason' => 'Contains a factual claim.',
+            'main_claim' => $driftedClaim,
+            'secondary_claims' => [],
+        ]))->extract($postText, [
+            'country' => 'TN',
+            'topic' => 'sports',
+        ]);
+
+        self::assertSame([self::NO_VERIFIABLE_CLAIM], $result);
+    }
+
+    public static function provideClaimDriftCasesThatContextMustNotAllow(): iterable
+    {
+        yield 'changed percentage is still rejected' => [
+            'Fuel prices increased by 5%.',
+            'Fuel prices increased by 15%.',
+        ];
+
+        yield 'changed denial into announcement is still rejected' => [
+            'The ministry denied that registration opened today.',
+            'The ministry announced that registration opened today.',
+        ];
+
+        yield 'changed date word is still rejected' => [
+            'The president will visit France on Monday.',
+            'The president will visit France on Tuesday.',
+        ];
+
+        yield 'changed short country entity is still rejected' => [
             'US approved new sanctions today.',
             'UK approved new sanctions today.',
         ];
