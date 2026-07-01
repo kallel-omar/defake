@@ -107,8 +107,8 @@ $scoreBreakdown04B = $this->scoreBreakdownBuilder->build(
     $formattedEvidenceSources,
     $officialSource
 ),
-    $this->calculateSourceAuthorityScore04B($officialSource, $formattedEvidenceSources),
-    $this->calculateSourceIndependenceScore04B($officialSource, $formattedEvidenceSources),
+    $this->scoreCalculator04B->calculateSourceAuthorityScore($officialSource, $formattedEvidenceSources),
+    $this->scoreCalculator04B->calculateSourceIndependenceScore($officialSource, $formattedEvidenceSources),
     $this->scoreCalculator04B->calculateRiskSafetyScore($originalPostText),
     [
         'evidenceMatch' => $this->explainEvidenceMatch04B(
@@ -643,51 +643,7 @@ private function isVerificationContextSafe04B(
 
 
 
-private function calculateSourceAuthorityScore04B(
-    array $officialSource,
-    array $evidenceItems,
-    array $relevantIndexes = []
-): int {
-    if (($officialSource['official'] ?? false) === true) {
-        $confidence = (int) ($officialSource['confidence'] ?? 0);
-        $category = (string) ($officialSource['category'] ?? 'unknown');
 
-        if ($confidence >= 85 && in_array($category, [
-            'government',
-            'ministry',
-            'public_authority',
-            'company',
-            'club',
-            'federation',
-            'organization',
-        ], true)) {
-            return 25;
-        }
-
-        return 20;
-    }
-
-    $relevantItems = $this->evidenceSourceMetrics04B->selectRelevantItems($evidenceItems, $relevantIndexes);
-
-    if (empty($relevantItems)) {
-        return 0;
-    }
-
-    $maxConfidence = 0;
-
-    foreach ($relevantItems as $item) {
-        $maxConfidence = max($maxConfidence, (int) ($item['confidenceScore'] ?? $item['sourceScore'] ?? 0));
-    }
-
-    return match (true) {
-        $maxConfidence >= 90 => 23,
-        $maxConfidence >= 75 => 18,
-        $maxConfidence >= 60 => 14,
-        $maxConfidence >= 40 => 9,
-        $maxConfidence >= 20 => 5,
-        default => 2,
-    };
-}
 private function explainEvidenceMatch04B(
     array $evidenceDecision,
     bool $verificationContextSafe,
@@ -741,47 +697,7 @@ if (!$hasUsableEvidenceSource && !$isOfficialSource) {
         default => 'DeFake could not determine a clear evidence relationship for this claim.',
     };
 }
-private function calculateSourceIndependenceScore04B(
-    array $officialSource,
-    array $evidenceItems,
-    array $relevantIndexes = []
-): int {
-    $relevantItems = $this->evidenceSourceMetrics04B->selectRelevantItems($evidenceItems, $relevantIndexes);
 
-    $hosts = [];
-
-    foreach ($relevantItems as $item) {
-        $host = $this->evidenceSourceMetrics04B->extractHost($item);
-        if ($host !== '') {
-            $hosts[$host] = true;
-        }
-    }
-
-    $distinctSources = count($hosts);
-
-    if (($officialSource['official'] ?? false) === true && $distinctSources >= 1) {
-        return 12;
-    }
-
-    if (($officialSource['official'] ?? false) === true) {
-        return 10;
-    }
-
-    $maxConfidence = 0;
-
-    foreach ($relevantItems as $item) {
-        $maxConfidence = max($maxConfidence, (int) ($item['confidenceScore'] ?? $item['sourceScore'] ?? 0));
-    }
-
-    return match (true) {
-        $distinctSources >= 3 && $maxConfidence >= 75 => 14,
-        $distinctSources >= 2 && $maxConfidence >= 75 => 12,
-        $distinctSources >= 2 && $maxConfidence >= 50 => 9,
-        $distinctSources === 1 && $maxConfidence >= 75 => 8,
-        $distinctSources === 1 => 4,
-        default => 0,
-    };
-}
 
 
 private function detectSourceDecision04B(
