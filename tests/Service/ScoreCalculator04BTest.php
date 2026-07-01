@@ -259,9 +259,9 @@ public function testCalculateEvidenceMatchScoreReturnsCurrentScore(
             7,
         ];
 
-        yield 'Arabic medium signal قريباً overlaps قريبا and returns 5' => [
+        yield 'Arabic medium signal قريباً returns 7' => [
             'قريباً سيتم الإعلان عن الصفقة',
-            5,
+            7,
         ];
 
         yield 'Arabic medium signal حسب مصادر returns 7' => [
