@@ -16,6 +16,7 @@ class PostAnalysisService
     private readonly HttpClientInterface $httpClient,
      private readonly InternetEvidenceSearchService $internetEvidenceSearchService,
     private readonly EvidenceFormatterService $evidenceFormatterService,
+    private readonly ScoreBreakdownBuilder $scoreBreakdownBuilder,
     private readonly OfficialSourceDetectorService $officialSourceDetectorService,
     private readonly EvidenceDecisionService $evidenceDecisionService,
     private readonly ClaimExtractionService $claimExtractionService,
@@ -97,7 +98,7 @@ $verificationContextSafe = $this->isVerificationContextSafe04B(
 
 
 
-$scoreBreakdown04B = $this->buildScoreBreakdown(
+$scoreBreakdown04B = $this->scoreBreakdownBuilder->build(
     $this->calculateEvidenceMatchScore04B(
     $evidenceDecision,
     $verificationContextSafe,
@@ -167,14 +168,6 @@ $verdict04B = $this->decideVerdict04B(
 
         return mb_substr($text, 0, $maxChars) . "\n...[truncated]";
     }
-
-    
-
-
-   
-
-
-
 
 private function hasStrongEvidenceSource(array $evidenceItems, array $relevantIndexes = []): bool
 {
@@ -360,45 +353,7 @@ private function explainExternalEvidenceScore(int $score): string
         ];
     }
     
-    private function buildScoreBreakdown(
-    int $evidenceMatch,
-    int $sourceAuthority,
-    int $sourceIndependence,
-    int $riskSafety,
-    array $reasons = []
-): array {
-    $evidenceMatch = max(0, min(50, $evidenceMatch));
-    $sourceAuthority = max(0, min(25, $sourceAuthority));
-    $sourceIndependence = max(0, min(15, $sourceIndependence));
-    $riskSafety = max(0, min(10, $riskSafety));
-
-    return [
-        'evidenceMatch' => [
-            'score' => $evidenceMatch,
-            'max' => 50,
-            'reason' => $reasons['evidenceMatch'] ?? '',
-        ],
-        'sourceAuthority' => [
-            'score' => $sourceAuthority,
-            'max' => 25,
-            'reason' => $reasons['sourceAuthority'] ?? '',
-        ],
-        'sourceIndependence' => [
-            'score' => $sourceIndependence,
-            'max' => 15,
-            'reason' => $reasons['sourceIndependence'] ?? '',
-        ],
-        'riskSafety' => [
-            'score' => $riskSafety,
-            'max' => 10,
-            'reason' => $reasons['riskSafety'] ?? '',
-        ],
-        'total' => [
-            'score' => $evidenceMatch + $sourceAuthority + $sourceIndependence + $riskSafety,
-            'max' => 100,
-        ],
-    ];
-}
+   
 private function explainSourceAuthority04B(array $officialSource, array $formattedEvidenceSources): string
 {
     if (($officialSource['official'] ?? false) === true) {
