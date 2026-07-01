@@ -31,6 +31,12 @@ final class HomeController extends AbstractController
         AnalysisUsageLimiter $analysisUsageLimiter
     ): Response {
         if ($request->isMethod('POST')) {
+            if (!$this->isCsrfTokenValid('facebook_check', (string) $request->request->get('_token'))) {
+                $this->addFlash('error', 'Invalid security token. Please try again.');
+
+                return $this->redirectToRoute('app_facebook_check');
+            }
+
             $user = $this->getUser();
             $currentUser = $user instanceof User ? $user : null;
             $ip = $request->getClientIp() ?? 'anonymous';
