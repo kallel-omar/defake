@@ -51,6 +51,44 @@ final class VerdictDecisionService04BTest extends TestCase
             $service->detectSourceDecision($officialSource, $evidenceItems, $relevantIndexes)
         );
     }
+        #[DataProvider('provideDetectRiskDecisionCases')]
+    public function testDetectRiskDecisionReturnsExpectedLabel(string $postText, string $expected): void
+    {
+        $service = $this->createService();
+
+        self::assertSame(
+            $expected,
+            $service->detectRiskDecision($postText)
+        );
+    }
+
+    public static function provideDetectRiskDecisionCases(): iterable
+    {
+        yield 'no risk signals returns low risk' => [
+            'Esperance signs a new player for two years.',
+            'LOW_RISK',
+        ];
+
+        yield 'one medium signal returns minor risk' => [
+            'Reportedly, Esperance signs a new player for two years.',
+            'MINOR_RISK',
+        ];
+
+        yield 'two medium signals return medium risk' => [
+            'Reportedly, this rumor says Esperance signs a new player for two years.',
+            'MEDIUM_RISK',
+        ];
+
+        yield 'one high signal returns high risk' => [
+            'Exclusive: Esperance signs a new player for two years.',
+            'HIGH_RISK',
+        ];
+
+        yield 'two high signals still return high risk' => [
+            'Breaking exclusive: Esperance signs a new player for two years.',
+            'HIGH_RISK',
+        ];
+    }
 
     public static function provideDetectSourceDecisionCases(): iterable
     {
