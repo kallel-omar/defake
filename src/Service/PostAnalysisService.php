@@ -2,19 +2,10 @@
 
 namespace App\Service;
 
-use App\Exception\AnalysisConfigurationException;
-use App\Exception\AnalysisPermanentException;
-use App\Exception\AnalysisTransientException;
-use Symfony\Contracts\HttpClient\HttpClientInterface;
-use Symfony\Contracts\HttpClient\Exception\DecodingExceptionInterface;
-use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
-
 class PostAnalysisService
 {
     public function __construct(
-    private readonly string $serperApiKey,
-    private readonly HttpClientInterface $httpClient,
-     private readonly InternetEvidenceSearchService $internetEvidenceSearchService,
+    private readonly InternetEvidenceSearchService $internetEvidenceSearchService,
     private readonly EvidenceFormatterService $evidenceFormatterService,
     private readonly ScoreBreakdownBuilder $scoreBreakdownBuilder,
     private readonly ScoreCalculator04B $scoreCalculator04B,
@@ -24,7 +15,6 @@ class PostAnalysisService
     private readonly EvidenceDecisionService $evidenceDecisionService,
     private readonly ClaimExtractionService $claimExtractionService,
     private readonly ClaimVerifiabilityService $claimVerifiabilityService,
-    
 ) {
 }
 
