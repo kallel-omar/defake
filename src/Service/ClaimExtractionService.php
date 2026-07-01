@@ -257,7 +257,7 @@ PROMPT;
             return [self::NO_VERIFIABLE_CLAIM];
         }
 
-        $factCheckable = (bool) ($result['fact_checkable'] ?? false);
+        $factCheckable = ($result['fact_checkable'] ?? null) === true;
 
         if (!$factCheckable) {
             return [self::NO_VERIFIABLE_CLAIM];
@@ -453,6 +453,10 @@ PROMPT;
                 continue;
             }
 
+            if ($this->claimIntroducesCriticalAnchor($claim, $postText)) {
+                continue;
+            }
+
             if ($this->looksLikePureOpinionClaim($claim)) {
                 continue;
             }
@@ -534,6 +538,93 @@ PROMPT;
         }
 
         return true;
+    }
+
+    private function claimIntroducesCriticalAnchor(string $claim, string $postText): bool
+    {
+        if ($this->introducesMissingAnchor($this->extractNumberAnchors($claim), $this->extractNumberAnchors($postText))) {
+            return true;
+        }
+
+        if ($this->introducesMissingAnchor($this->extractShortUppercaseAnchors($claim), $this->extractShortAcronymComparisonAnchors($postText))) {
+            return true;
+        }
+
+        if ($this->introducesMissingAnchor($this->extractCriticalMeaningAnchors($claim), $this->extractCriticalMeaningAnchors($postText))) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private function introducesMissingAnchor(array $claimAnchors, array $postAnchors): bool
+    {
+        if (empty($claimAnchors)) {
+            return false;
+        }
+
+        return array_diff($claimAnchors, $postAnchors) !== [];
+    }
+
+    private function extractNumberAnchors(string $text): array
+    {
+        if (preg_match_all('/(?<![\p{L}\p{N}])\d+(?:[.,]\d+)?\s*%?/u', $text, $matches) !== 1) {
+            return [];
+        }
+
+        return array_values(array_unique(array_map(
+            static fn (string $anchor) => str_replace(' ', '', mb_strtolower($anchor)),
+            $matches[0]
+        )));
+    }
+
+    private function extractShortUppercaseAnchors(string $text): array
+    {
+        $matchCount = preg_match_all('/(?<![\p{L}\p{N}])[A-Z]{2,5}(?![\p{L}\p{N}])/u', $text, $matches);
+
+        if ($matchCount === false || $matchCount === 0) {
+            return [];
+        }
+
+        return array_values(array_unique(array_map(
+            static fn (string $anchor) => mb_strtoupper($anchor),
+            $matches[0]
+        )));
+    }
+
+    private function extractShortAcronymComparisonAnchors(string $text): array
+    {
+        $matchCount = preg_match_all('/(?<![\p{L}\p{N}])[A-Za-z]{2,5}(?![\p{L}\p{N}])/u', $text, $matches);
+
+        if ($matchCount === false || $matchCount === 0) {
+            return [];
+        }
+
+        return array_values(array_unique(array_map(
+            static fn (string $anchor) => mb_strtoupper($anchor),
+            $matches[0]
+        )));
+    }
+
+    private function extractCriticalMeaningAnchors(string $text): array
+    {
+        $anchors = [];
+        $normalized = mb_strtolower($text);
+
+        $patterns = [
+            'denial' => '/\b(denied|denies|deny|denial)\b/u',
+            'announcement' => '/\b(announced|announces|announce|announcement)\b/u',
+            'finalized_signing' => '/\b(signed|signs)\b/u',
+            'near_signing' => '/\b(close to signing|near signing|set to sign|expected to sign|in talks|negotiating)\b/u',
+        ];
+
+        foreach ($patterns as $anchor => $pattern) {
+            if (preg_match($pattern, $normalized) === 1) {
+                $anchors[] = $anchor;
+            }
+        }
+
+        return $anchors;
     }
 
     private function removeSupportingDetailClaims(array $claims): array
