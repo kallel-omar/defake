@@ -219,6 +219,61 @@ public function testCalculateEvidenceMatchScoreReturnsCurrentScore(
             5,
         ];
 
+        yield 'Arabic high signal عاجل جدا returns 3' => [
+            'عاجل جدا: إعلان مهم عن الصفقة',
+            3,
+        ];
+
+        yield 'Arabic high signal تسريب خطير returns 3' => [
+            'تسريب خطير عن انتقال اللاعب',
+            3,
+        ];
+
+        yield 'two Arabic high signals return 1' => [
+            'عاجل جدا وتسريب خطير عن انتقال اللاعب',
+            1,
+        ];
+
+        yield 'Arabic high signal كارثة returns 3' => [
+            'كارثة كبيرة في النادي',
+            3,
+        ];
+
+        yield 'Arabic high signal زلزال returns 3' => [
+            'زلزال في سوق الانتقالات',
+            3,
+        ];
+
+        yield 'Arabic high signal الحقيقة ستظهر returns 3' => [
+            'الحقيقة ستظهر قريبا بخصوص الصفقة',
+            3,
+        ];
+
+        yield 'Arabic high signal مصادر تؤكد returns 3' => [
+            'مصادر تؤكد انتقال اللاعب',
+            3,
+        ];
+
+        yield 'Arabic medium signal قريبا returns 7' => [
+            'قريبا سيتم الإعلان عن الصفقة',
+            7,
+        ];
+
+        yield 'Arabic medium signal قريباً overlaps قريبا and returns 5' => [
+            'قريباً سيتم الإعلان عن الصفقة',
+            5,
+        ];
+
+        yield 'Arabic medium signal حسب مصادر returns 7' => [
+            'حسب مصادر مطلعة اللاعب سيوقع اليوم',
+            7,
+        ];
+
+        yield 'Arabic medium signal يقال returns 7' => [
+            'يقال إن اللاعب سيوقع اليوم',
+            7,
+        ];
+
         yield 'one high English signal returns 3' => [
             'Breaking: player signed today',
             3,
