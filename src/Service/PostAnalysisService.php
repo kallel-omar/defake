@@ -19,6 +19,7 @@ class PostAnalysisService
     private readonly ScoreBreakdownBuilder $scoreBreakdownBuilder,
     private readonly ScoreCalculator04B $scoreCalculator04B,
     private readonly EvidenceSourceMetrics04B $evidenceSourceMetrics04B,
+    private readonly VerdictDecisionService04B $verdictDecisionService04B,
     private readonly OfficialSourceDetectorService $officialSourceDetectorService,
     private readonly EvidenceDecisionService $evidenceDecisionService,
     private readonly ClaimExtractionService $claimExtractionService,
@@ -102,32 +103,40 @@ $verificationContextSafe = $this->isVerificationContextSafe04B(
 
 $scoreBreakdown04B = $this->scoreBreakdownBuilder->build(
     $this->scoreCalculator04B->calculateEvidenceMatchScore(
-    $evidenceDecision,
-    $verificationContextSafe,
-    $formattedEvidenceSources,
-    $officialSource
-),
+        $evidenceDecision,
+        $verificationContextSafe,
+        $formattedEvidenceSources,
+        $officialSource
+    ),
     $this->scoreCalculator04B->calculateSourceAuthorityScore($officialSource, $formattedEvidenceSources),
     $this->scoreCalculator04B->calculateSourceIndependenceScore($officialSource, $formattedEvidenceSources),
     $this->scoreCalculator04B->calculateRiskSafetyScore($originalPostText),
     [
         'evidenceMatch' => $this->explainEvidenceMatch04B(
-    $evidenceDecision,
-    $verificationContextSafe,
-    $formattedEvidenceSources,
-    $officialSource
-),
+            $evidenceDecision,
+            $verificationContextSafe,
+            $formattedEvidenceSources,
+            $officialSource
+        ),
         'sourceAuthority' => $this->explainSourceAuthority04B($officialSource, $formattedEvidenceSources),
         'sourceIndependence' => $this->explainSourceIndependence04B($officialSource, $formattedEvidenceSources),
         'riskSafety' => 'Risk safety is estimated from the original post wording.',
     ]
 );
-$verdict04B = $this->decideVerdict04B(
+
+$sourceDecision04B = $this->verdictDecisionService04B->detectSourceDecision(
+    $officialSource,
+    $formattedEvidenceSources
+);
+
+$riskDecision04B = $this->verdictDecisionService04B->detectRiskDecision($originalPostText);
+
+$verdict04B = $this->verdictDecisionService04B->decide(
     $scoreBreakdown04B,
     $claimVerifiability,
     $evidenceDecision,
-    $this->detectSourceDecision04B($officialSource, $formattedEvidenceSources),
-    $this->detectRiskDecision04B($originalPostText),
+    $sourceDecision04B,
+    $riskDecision04B,
     $officialSource
 );
 
@@ -142,8 +151,8 @@ $verdict04B = $this->decideVerdict04B(
 'scoreBreakdown' => $scoreBreakdown04B,
 'claimVerifiability' => $claimVerifiability,
 'evidenceDecision' => $evidenceDecision['status'] ?? 'UNKNOWN',
-'sourceDecision' => $this->detectSourceDecision04B($officialSource, $formattedEvidenceSources),
-'riskDecision' => $this->detectRiskDecision04B($originalPostText),
+'sourceDecision' => $sourceDecision04B,
+'riskDecision' => $riskDecision04B,
 'capsApplied' => $verdict04B['capsApplied'],
             'evidenceSources' => $formattedEvidenceSources,
 
@@ -429,153 +438,6 @@ if (in_array('NO_USABLE_EVIDENCE_SOURCE', $capsApplied, true)) {
 }
     return 'The claim has some supporting evidence, but DeFake did not find enough primary or authoritative confirmation to mark it as Likely Trusted.';
 }
-private function decideVerdict04B(
-    array $scoreBreakdown,
-    array $claimVerifiability,
-    array $evidenceDecision,
-    string $sourceDecision,
-    string $riskDecision,
-    array $officialSource
-): array {
-    if (($claimVerifiability['verifiable'] ?? false) !== true) {
-        return [
-            'score' => 0,
-            'verdict' => 'NOT_VERIFIABLE',
-            'capsApplied' => ['NO_CLEAR_CLAIM'],
-        ];
-    }
-
-    $evidenceMatch = (int) ($scoreBreakdown['evidenceMatch']['score'] ?? 0);
-    $sourceAuthority = (int) ($scoreBreakdown['sourceAuthority']['score'] ?? 0);
-    $sourceIndependence = (int) ($scoreBreakdown['sourceIndependence']['score'] ?? 0);
-    $riskSafety = (int) ($scoreBreakdown['riskSafety']['score'] ?? 0);
-    $totalScore = (int) ($scoreBreakdown['total']['score'] ?? 0);
-
-    $status = strtoupper((string) ($evidenceDecision['status'] ?? 'UNKNOWN'));
-    $claimType = (string) ($claimVerifiability['claimType'] ?? 'unknown');
-
-    $capsApplied = [];
-
-    if ($status === 'CONTRADICTED') {
-        return [
-            'score' => min($totalScore, 25),
-            'verdict' => 'Likely Fake',
-            'capsApplied' => ['DIRECT_REFUTATION'],
-        ];
-    }
-
-    $verdict = match (true) {
-        $totalScore >= 80 => 'Likely Trusted',
-        $totalScore >= 40 => 'Suspicious',
-        default => 'Likely Fake',
-    };
-    // If the AI/evidence decision says SUPPORTED but DeFake has no usable
-// evidence source to show, do not call it fake. Treat it as unresolved.
-if (
-    $status === 'SUPPORTED'
-    && $sourceAuthority === 0
-    && $sourceIndependence === 0
-    && $verdict === 'Likely Fake'
-) {
-    $verdict = 'Suspicious';
-    $capsApplied[] = 'NO_USABLE_EVIDENCE_SOURCE';
-}
-
-    $isOfficialSelfAnnouncement =
-        ($officialSource['official'] ?? false) === true
-        && $sourceAuthority >= 23
-        && $status === 'SUPPORTED';
-
-    // Strong trust rule:
-    // Likely Trusted requires strong evidence match + strong source,
-    // unless it is an official/primary self-announcement.
-    if (
-        $verdict === 'Likely Trusted'
-        && !$isOfficialSelfAnnouncement
-        && ($evidenceMatch < 40 || $sourceAuthority < 15)
-    ) {
-        $verdict = 'Suspicious';
-        $capsApplied[] = 'STRONG_TRUST_REQUIRES_MATCH_AND_AUTHORITY';
-    }
-
-    if (
-        in_array($status, ['UNRELATED'], true)
-        && $verdict === 'Likely Trusted'
-    ) {
-        $verdict = 'Suspicious';
-        $capsApplied[] = 'DIFFERENT_CONTEXT_ONLY';
-    }
-
-    if (
-        $sourceAuthority <= 9
-        && $sourceIndependence <= 6
-        && !$isOfficialSelfAnnouncement
-        && $verdict === 'Likely Trusted'
-    ) {
-        $verdict = 'Suspicious';
-        $capsApplied[] = 'WEAK_REPEATED_RUMORS';
-    }
-
-   $seriousClaimTypes = [
-    'sports',
-    'politics',
-    'business',
-    'legal',
-    'health',
-    'weather',
-    'official_announcement',
-];
-
-if (
-    in_array($claimType, $seriousClaimTypes, true)
-    && $sourceAuthority < 15
-    && !$isOfficialSelfAnnouncement
-    && $verdict === 'Likely Trusted'
-) {
-    $verdict = 'Suspicious';
-    $capsApplied[] = 'SERIOUS_CLAIM_NEEDS_STRONG_SOURCE';
-}
-
-// 04B safety cap:
-// Serious/public claims should not become Likely Trusted from normal media alone.
-// They need an official/primary source or a very top source.
-if (
-    in_array($claimType, $seriousClaimTypes, true)
-    && !$isOfficialSelfAnnouncement
-    && !in_array($sourceDecision, ['PRIMARY_OFFICIAL', 'PRIMARY_DOCUMENT', 'PRIMARY_DOCUMENT_OR_TOP_SOURCE'], true)
-    && $sourceAuthority < 23
-    && $verdict === 'Likely Trusted'
-) {
-    $verdict = 'Suspicious';
-    $capsApplied[] = 'SERIOUS_CLAIM_NEEDS_PRIMARY_OR_TOP_SOURCE';
-}
-
-if (
-    $riskSafety <= 3
-    && $evidenceMatch < 40
-    && $sourceAuthority < 15
-    && $verdict === 'Likely Trusted'
-) {
-    $verdict = 'Suspicious';
-    $capsApplied[] = 'HIGH_RISK_WITH_WEAK_EVIDENCE';
-}
-
-if ($status === 'PARTIALLY_SUPPORTED' && $verdict === 'Likely Trusted') {
-    $verdict = 'Suspicious';
-    $capsApplied[] = 'PARTIAL_SUPPORT_ONLY';
-}
-
-if (in_array($status, ['UNSUPPORTED', 'UNKNOWN'], true) && $verdict === 'Likely Trusted') {
-    $verdict = 'Suspicious';
-    $capsApplied[] = 'NO_DIRECT_SUPPORT';
-}
-
-return [
-    'score' => $totalScore,
-    'verdict' => $verdict,
-    'capsApplied' => array_values(array_unique($capsApplied)),
-];
-}
 
 private function explainSourceIndependence04B(array $officialSource, array $formattedEvidenceSources): string
 {
@@ -700,49 +562,9 @@ if (!$hasUsableEvidenceSource && !$isOfficialSource) {
 
 
 
-private function detectSourceDecision04B(
-    array $officialSource,
-    array $evidenceItems,
-    array $relevantIndexes = []
-): string {
-    if (($officialSource['official'] ?? false) === true) {
-        return 'PRIMARY_OFFICIAL';
-    }
 
-    $relevantItems = $this->evidenceSourceMetrics04B->selectRelevantItems($evidenceItems, $relevantIndexes);
 
-    if (empty($relevantItems)) {
-        return 'UNKNOWN';
-    }
 
-    $maxConfidence = 0;
-
-    foreach ($relevantItems as $item) {
-        $maxConfidence = max($maxConfidence, (int) ($item['confidenceScore'] ?? $item['sourceScore'] ?? 0));
-    }
-
-    return match (true) {
-        $maxConfidence >= 90 => 'PRIMARY_DOCUMENT_OR_TOP_SOURCE',
-        $maxConfidence >= 75 => 'REPUTABLE_MEDIA',
-        $maxConfidence >= 60 => 'KNOWN_MEDIA',
-        $maxConfidence >= 40 => 'WEAK_MEDIA',
-        $maxConfidence >= 20 => 'SOCIAL_OR_LOW_AUTHORITY_SOURCE',
-        default => 'UNKNOWN',
-    };
-}
-
-private function detectRiskDecision04B(string $postText): string
-{
-    $riskSafety = $this->scoreCalculator04B->calculateRiskSafetyScore($postText);
-
-    return match (true) {
-        $riskSafety >= 9 => 'LOW_RISK',
-        $riskSafety >= 7 => 'MINOR_RISK',
-        $riskSafety >= 4 => 'MEDIUM_RISK',
-        $riskSafety >= 1 => 'HIGH_RISK',
-        default => 'SEVERE_RISK',
-    };
-}
 
 
 
