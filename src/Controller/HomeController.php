@@ -79,7 +79,7 @@ final class HomeController extends AbstractController
                     $currentUser,
                     $isAdmin,
                     'app_facebook_check',
-                    'This text was already checked. Showing existing result.',
+                    'This link was already submitted. Showing existing result.',
                     $em
                 );
             }
