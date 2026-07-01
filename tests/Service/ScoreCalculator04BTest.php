@@ -416,6 +416,200 @@ public function testCalculateEvidenceMatchScoreReturnsCurrentScore(
             0,
         ];
     }
+        #[DataProvider('provideSourceIndependenceScoreCases')]
+    public function testCalculateSourceIndependenceScoreReturnsCurrentScore(
+        array $officialSource,
+        array $evidenceItems,
+        array $relevantIndexes,
+        int $expectedScore
+    ): void {
+        $calculator = $this->createCalculator();
+
+        self::assertSame(
+            $expectedScore,
+            $calculator->calculateSourceIndependenceScore(
+                $officialSource,
+                $evidenceItems,
+                $relevantIndexes
+            )
+        );
+    }
+
+    public static function provideSourceIndependenceScoreCases(): iterable
+    {
+        yield 'official source with one evidence host returns 12' => [
+            ['official' => true],
+            [
+                ['link' => 'https://official-source.tn/news', 'confidenceScore' => 10],
+            ],
+            [],
+            12,
+        ];
+
+        yield 'official source with no evidence returns 10' => [
+            ['official' => true],
+            [],
+            [],
+            10,
+        ];
+
+        yield 'non-official 3 distinct hosts with confidence 75 returns 14' => [
+            ['official' => false],
+            [
+                ['link' => 'https://source-a.com/news', 'confidenceScore' => 75],
+                ['link' => 'https://source-b.com/news', 'confidenceScore' => 75],
+                ['link' => 'https://source-c.com/news', 'confidenceScore' => 75],
+            ],
+            [],
+            14,
+        ];
+
+        yield 'non-official 3 distinct hosts with confidence 74 returns 9' => [
+            ['official' => false],
+            [
+                ['link' => 'https://source-a.com/news', 'confidenceScore' => 74],
+                ['link' => 'https://source-b.com/news', 'confidenceScore' => 74],
+                ['link' => 'https://source-c.com/news', 'confidenceScore' => 74],
+            ],
+            [],
+            9,
+        ];
+
+        yield 'non-official 2 distinct hosts with confidence 75 returns 12' => [
+            ['official' => false],
+            [
+                ['link' => 'https://source-a.com/news', 'confidenceScore' => 75],
+                ['link' => 'https://source-b.com/news', 'confidenceScore' => 75],
+            ],
+            [],
+            12,
+        ];
+
+        yield 'non-official 2 distinct hosts with confidence 50 returns 9' => [
+            ['official' => false],
+            [
+                ['link' => 'https://source-a.com/news', 'confidenceScore' => 50],
+                ['link' => 'https://source-b.com/news', 'confidenceScore' => 50],
+            ],
+            [],
+            9,
+        ];
+
+        yield 'non-official 2 distinct hosts with confidence 49 returns 0' => [
+            ['official' => false],
+            [
+                ['link' => 'https://source-a.com/news', 'confidenceScore' => 49],
+                ['link' => 'https://source-b.com/news', 'confidenceScore' => 49],
+            ],
+            [],
+            0,
+        ];
+
+        yield 'non-official 1 distinct host with confidence 75 returns 8' => [
+            ['official' => false],
+            [
+                ['link' => 'https://source-a.com/news', 'confidenceScore' => 75],
+            ],
+            [],
+            8,
+        ];
+
+        yield 'non-official 1 distinct host with confidence 74 returns 4' => [
+            ['official' => false],
+            [
+                ['link' => 'https://source-a.com/news', 'confidenceScore' => 74],
+            ],
+            [],
+            4,
+        ];
+
+        yield 'duplicate host counts once and returns single-source high-confidence score 8' => [
+            ['official' => false],
+            [
+                ['link' => 'https://source-a.com/news-1', 'confidenceScore' => 95],
+                ['link' => 'https://source-a.com/news-2', 'confidenceScore' => 95],
+            ],
+            [],
+            8,
+        ];
+
+        yield 'www prefix and uppercase host normalization collapse to one host' => [
+            ['official' => false],
+            [
+                ['link' => 'https://www.SOURCE-A.com/news-1', 'confidenceScore' => 95],
+                ['link' => 'https://source-a.com/news-2', 'confidenceScore' => 95],
+            ],
+            [],
+            8,
+        ];
+
+        yield 'source fallback is used when link is missing' => [
+            ['official' => false],
+            [
+                ['source' => 'Mosaique FM', 'confidenceScore' => 95],
+            ],
+            [],
+            8,
+        ];
+
+        yield 'source fallback trims and lowercases source name' => [
+            ['official' => false],
+            [
+                ['source' => '  MOSAIQUE FM  ', 'confidenceScore' => 95],
+            ],
+            [],
+            8,
+        ];
+
+        yield 'sourceScore fallback returns high single-source score when confidenceScore is missing' => [
+            ['official' => false],
+            [
+                ['link' => 'https://source-a.com/news', 'sourceScore' => 99],
+            ],
+            [],
+            8,
+        ];
+
+        yield 'confidenceScore has priority over sourceScore even when confidenceScore is zero' => [
+            ['official' => false],
+            [
+                ['link' => 'https://source-a.com/news', 'confidenceScore' => 0, 'sourceScore' => 99],
+            ],
+            [],
+            4,
+        ];
+
+        yield 'relevant indexes filter to one selected item' => [
+            ['official' => false],
+            [
+                ['link' => 'https://source-a.com/news', 'confidenceScore' => 95],
+                ['link' => 'https://source-b.com/news', 'confidenceScore' => 95],
+                ['link' => 'https://source-c.com/news', 'confidenceScore' => 95],
+            ],
+            [1],
+            8,
+        ];
+
+        yield 'relevant indexes filter to two selected items' => [
+            ['official' => false],
+            [
+                ['link' => 'https://source-a.com/news', 'confidenceScore' => 95],
+                ['link' => 'https://source-b.com/news', 'confidenceScore' => 95],
+                ['link' => 'https://source-c.com/news', 'confidenceScore' => 95],
+            ],
+            [0, 2],
+            12,
+        ];
+
+        yield 'invalid relevant indexes return 0 because no relevant items are selected' => [
+            ['official' => false],
+            [
+                ['link' => 'https://source-a.com/news', 'confidenceScore' => 95],
+            ],
+            [99],
+            0,
+        ];
+    }
 
         private function createCalculator(): ScoreCalculator04B
     {
