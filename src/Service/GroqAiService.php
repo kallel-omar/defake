@@ -138,54 +138,6 @@ private function getRetryDelaySeconds(string $message, int $attempt): int
         return $decoded;
     }
 
-    public function analyzeEvidence(string $claim, array $evidence): array
-    {
-        $evidenceJson = json_encode(
-            $evidence,
-            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT
-        );
-
-        $prompt = <<<PROMPT
-You are a credibility-checking assistant for DeFake.
-
-Analyze whether the evidence supports the claim.
-
-Return only valid JSON with this exact structure:
-{
-  "verdict": "TRUE|MISLEADING|FALSE|NOT_ENOUGH_EVIDENCE",
-  "confidence": 0,
-  "explanation": "short explanation"
-}
-
-Claim:
-{$claim}
-
-Evidence:
-{$evidenceJson}
-PROMPT;
-
-        $data = $this->askJson($prompt, 1200);
-
-        $allowedVerdicts = [
-            'TRUE',
-            'MISLEADING',
-            'FALSE',
-            'NOT_ENOUGH_EVIDENCE',
-        ];
-
-        $verdict = strtoupper((string) ($data['verdict'] ?? 'NOT_ENOUGH_EVIDENCE'));
-
-        if (!in_array($verdict, $allowedVerdicts, true)) {
-            $verdict = 'NOT_ENOUGH_EVIDENCE';
-        }
-
-        return [
-            'verdict' => $verdict,
-            'confidence' => max(0, min(100, (int) ($data['confidence'] ?? 0))),
-            'explanation' => trim((string) ($data['explanation'] ?? 'Groq analyzed the available evidence.')),
-        ];
-    }
-
     private function decodeJson(string $content): ?array
     {
         $content = trim($content);

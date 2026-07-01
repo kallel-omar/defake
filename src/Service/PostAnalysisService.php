@@ -67,11 +67,9 @@ class PostAnalysisService
 $internetEvidenceData = $this->searchInternetEvidence($searchQuery, $mainClaim);
 
 
-        $internetEvidence = $internetEvidenceData['text'];
         $evidenceItems = $internetEvidenceData['items'];
 
         $postText = $this->limitText($postText, 1500);
-        $internetEvidence = $this->limitText($internetEvidence, 2500);
 
         $evidenceDecision = $this->evidenceDecisionService->decide(
             $mainClaim,
@@ -79,101 +77,6 @@ $internetEvidenceData = $this->searchInternetEvidence($searchQuery, $mainClaim);
         );
 
         $officialSource = $this->officialSourceDetectorService->detect($sourceContext, $postText);
-
-        $pageName = $sourceContext['pageName'] ?? 'Unknown';
-        $userName = $sourceContext['userName'] ?? 'Unknown';
-        $userId = $sourceContext['userId'] ?? 'Unknown';
-        $postUrl = $sourceContext['postUrl'] ?? 'Unknown';
-        $officialText = $officialSource['official'] ? 'yes' : 'no';
-        $officialReason = $officialSource['reason'];
-
-        $prompt = <<<PROMPT
-You are DeFake, an AI fact-checking assistant.
-
-Analyze the credibility of the following Facebook post using:
-1. The Facebook post text
-2. The internet search evidence
-3. The Facebook source context
-
-Always return the explanation and reasons in English.
-
-URL:
-$url
-
-Post Text:
-$postText
-
-Internet Evidence:
-$internetEvidence
-
-Facebook Source Context:
-Page name: $pageName
-User name: $userName
-User ID: $userId
-Post URL: $postUrl
-
-Official Source Detection:
-Official source: $officialText
-Reason: $officialReason
-
-Important:
-If the Facebook page is an official organization page and the announcement concerns that organization itself, treat the Facebook page as a primary source.
-
-If the Facebook source is not official, do NOT automatically treat the post as fake.
-A non-official page may still publish a true claim.
-For non-official pages, base the verdict mainly on whether credible internet evidence supports or contradicts the claim.
-If the internet evidence contains credible sources confirming the same factual claim, treat the claim as supported.
-
-Do not say the internet evidence contradicts the claim unless at least one credible source explicitly says the claim is false or gives different facts.
-
-A source is relevant only if it confirms the same event, action, entities, date, number, location, or decision mentioned in the claim.
-
-Do not treat loosely related sources as support.
-Same topic, same organization, or same country is not enough.
-
-Only mark a post as Likely Fake when credible evidence contradicts the claim, or when a serious factual claim has no reliable support at all.
-
-Evaluation criteria:
-- Does the post provide evidence?
-- If the source is not official, is the claim still supported by credible external evidence?
-- Do internet results support or contradict the post?
-- Is the Facebook source an official organization page?
-- Is there missing context?
-- Is the language manipulative or emotional?
-- Are there extraordinary claims without proof?
-
-Score the following categories from 0 to 25:
-
-Evidence Score:
-25 = direct evidence or primary source
-15 = partial evidence or multiple supporting sources
-5 = weak evidence
-0 = no evidence
-
-Language Score:
-25 = neutral, factual, clear language
-20 = mostly neutral and informative
-15 = somewhat emotional or persuasive
-5 = highly emotional, manipulative, biased, insulting, or conspiratorial
-0 = extreme manipulation, propaganda, hate, or inflammatory language
-
-Important:
-The languageScore must match the languageReason.
-If the languageReason says the post is neutral or factual, never give languageScore 0.
-If the post is neutral and factual, languageScore should be between 20 and 25.
-
-Return ONLY valid JSON:
-
-{
-  "evidenceScore": 0,
-  "languageScore": 0,
-  "evidenceReason": "",
-  "sourceReason": "",
-  "languageReason": "",
-  "verificationReason": "",
-  "explanation": ""
-}
-PROMPT;
 
       $formattedEvidenceSources = $this->formatEvidenceSources(
     $evidenceItems,

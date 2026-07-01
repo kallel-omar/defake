@@ -1,5 +1,4 @@
 parameters:
-    openrouter_api_key: '%env(OPENROUTER_API_KEY)%'
     serper_api_key: '%env(SERPER_API_KEY)%'
     apify_api_token: '%env(APIFY_API_TOKEN)%'
 
@@ -8,7 +7,6 @@ services:
         autowire: true
         autoconfigure: true
         bind:
-            string $openRouterApiKey: '%openrouter_api_key%'
             string $serperApiKey: '%serper_api_key%'
 
     App\:
@@ -26,8 +24,3 @@ services:
         arguments:
             $groqApiKey: '%env(GROQ_API_KEY)%'
             $groqModel: '%env(GROQ_MODEL)%'
-    
-    App\Service\GeminiAiService:
-         arguments:
-            $geminiApiKey: '%env(GEMINI_API_KEY)%'
-            $geminiModel: '%env(GEMINI_MODEL)%'
