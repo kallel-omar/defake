@@ -15,7 +15,7 @@ class PostAnalysisService
     private readonly string $serperApiKey,
     private readonly HttpClientInterface $httpClient,
      private readonly InternetEvidenceSearchService $internetEvidenceSearchService,
-    private readonly SourceConfidenceService $sourceConfidenceService,
+    private readonly EvidenceFormatterService $evidenceFormatterService,
     private readonly OfficialSourceDetectorService $officialSourceDetectorService,
     private readonly EvidenceDecisionService $evidenceDecisionService,
     private readonly ClaimExtractionService $claimExtractionService,
@@ -83,7 +83,7 @@ $internetEvidenceData = $this->internetEvidenceSearchService->search($searchQuer
 
         $officialSource = $this->officialSourceDetectorService->detect($sourceContext, $postText);
 
-      $formattedEvidenceSources = $this->formatEvidenceSources(
+      $formattedEvidenceSources = $this->evidenceFormatterService->formatSources(
     $evidenceItems,
     $mainClaim,
     $evidenceDecision['relevantIndexes'] ?? []
@@ -175,65 +175,7 @@ $verdict04B = $this->decideVerdict04B(
 
 
 
-private function formatEvidenceSources(array $items, ?string $claim = null, array $relevantIndexes = []): array
-{
-    $sources = [];
 
-    $relevantIndexes = array_values(array_unique(array_map('intval', $relevantIndexes)));
-
-if (empty($relevantIndexes)) {
-    return [];
-}
-
-foreach (array_slice($items, 0, 5, true) as $index => $item) {
-    if (!in_array((int) $index, $relevantIndexes, true)) {
-        continue;
-    }
-
-        $link = $item['link'] ?? null;
-
-        if (!$link) {
-            continue;
-        }
-
-        $title = $item['title'] ?? 'No title';
-        $snippet = $item['snippet'] ?? '';
-        $sourceName = $item['source'] ?? parse_url($link, PHP_URL_HOST);
-
-        $confidence = $this->sourceConfidenceService->score($link);
-
-        $officialDecision = $this->officialSourceDetectorService->evaluateEvidenceUrl(
-            $link,
-            $title,
-            $snippet,
-            $claim ?? ''
-        );
-
-        if (($confidence['type'] ?? 'unknown') === 'social') {
-            if (!$officialDecision['official'] || ($officialDecision['confidence'] ?? 0) < 65) {
-                continue;
-            }
-        } else {
-            if (($confidence['score'] ?? 0) < 60) {
-                continue;
-            }
-        }
-
-        $sources[] = [
-            'title' => $title,
-            'link' => $link,
-            'snippet' => $snippet,
-            'source' => $sourceName,
-            'confidenceScore' => $confidence['score'] ?? 0,
-            'confidenceLabel' => $confidence['label'] ?? 'Unknown',
-            'officialCategory' => $officialDecision['category'] ?? 'unknown',
-            'officialConfidence' => $officialDecision['confidence'] ?? 0,
-            'officialReason' => $officialDecision['reason'] ?? '',
-        ];
-    }
-
-    return $sources;
-}
 private function hasStrongEvidenceSource(array $evidenceItems, array $relevantIndexes = []): bool
 {
     $itemsToCheck = [];
