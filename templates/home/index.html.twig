@@ -44,6 +44,12 @@
                         </div>
                     {% endfor %}
 
+                    {% if not aiAnalysisAvailable %}
+                        <div class="alert alert-warning">
+                            {{ aiUnavailableMessage }}
+                        </div>
+                    {% endif %}
+
                     <form method="post" action="{{ path('app_text_check') }}">
                         <input type="hidden" name="_token" value="{{ csrf_token('text_check') }}">
 
@@ -69,7 +75,8 @@
 
                         <button
                             type="submit"
-                            class="btn btn-danger btn-lg w-100 rounded-pill">
+                            class="btn btn-danger btn-lg w-100 rounded-pill"
+                            {% if not aiAnalysisAvailable %}disabled{% endif %}>
                             &#128269; Analyze Claim
                         </button>
                     </form>

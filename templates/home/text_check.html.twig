@@ -27,6 +27,24 @@
                         search for evidence, and generate a credibility report.
                     </p>
 
+                    {% for message in app.flashes('error') %}
+                        <div class="alert alert-danger">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+
+                    {% for message in app.flashes('info') %}
+                        <div class="alert alert-info">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+
+                    {% if not aiAnalysisAvailable %}
+                        <div class="alert alert-warning">
+                            {{ aiUnavailableMessage }}
+                        </div>
+                    {% endif %}
+
                     <form method="post" action="{{ path('app_text_check') }}">
                         <input type="hidden" name="_token" value="{{ csrf_token('text_check') }}">
 
@@ -50,7 +68,10 @@
                             </div>
                         </div>
 
-                        <button type="submit" class="btn btn-danger rounded-pill px-4 py-2">
+                        <button
+                            type="submit"
+                            class="btn btn-danger rounded-pill px-4 py-2"
+                            {% if not aiAnalysisAvailable %}disabled{% endif %}>
                             Check Text Claim
                         </button>
                     </form>

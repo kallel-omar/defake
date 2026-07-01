@@ -6,6 +6,7 @@ use App\Entity\PostCheck;
 use App\Entity\User;
 use App\Message\AnalyzePostMessage;
 use App\Repository\PostCheckRepository;
+use App\Service\AnalysisAvailabilityService;
 use App\Service\AnalysisUsageLimiter;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -17,9 +18,12 @@ use Symfony\Component\Routing\Attribute\Route;
 final class HomeController extends AbstractController
 {
     #[Route('/', name: 'app_home', methods: ['GET'])]
-    public function index(): Response
+    public function index(AnalysisAvailabilityService $analysisAvailability): Response
     {
-        return $this->render('home/index.html.twig');
+        return $this->render('home/index.html.twig', [
+            'aiAnalysisAvailable' => $analysisAvailability->isAiAnalysisAvailable(),
+            'aiUnavailableMessage' => $analysisAvailability->getAiUnavailableMessage(),
+        ]);
     }
 
     #[Route('/check/facebook', name: 'app_facebook_check', methods: ['GET', 'POST'])]
@@ -28,11 +32,18 @@ final class HomeController extends AbstractController
         EntityManagerInterface $em,
         PostCheckRepository $postCheckRepository,
         MessageBusInterface $bus,
+        AnalysisAvailabilityService $analysisAvailability,
         AnalysisUsageLimiter $analysisUsageLimiter
     ): Response {
         if ($request->isMethod('POST')) {
             if (!$this->isCsrfTokenValid('facebook_check', (string) $request->request->get('_token'))) {
                 $this->addFlash('error', 'Invalid security token. Please try again.');
+
+                return $this->redirectToRoute('app_facebook_check');
+            }
+
+            if (!$analysisAvailability->isFacebookAnalysisAvailable()) {
+                $this->addFlash('error', $analysisAvailability->getFacebookUnavailableMessage());
 
                 return $this->redirectToRoute('app_facebook_check');
             }
@@ -115,7 +126,10 @@ final class HomeController extends AbstractController
             return $this->redirectToCreatedPostCheck($postCheck, $currentUser, $isAdmin);
         }
 
-        return $this->render('home/facebook_check.html.twig');
+        return $this->render('home/facebook_check.html.twig', [
+            'facebookAnalysisAvailable' => $analysisAvailability->isFacebookAnalysisAvailable(),
+            'facebookUnavailableMessage' => $analysisAvailability->getFacebookUnavailableMessage(),
+        ]);
     }
 
     #[Route('/check/text', name: 'app_text_check', methods: ['GET', 'POST'])]
@@ -124,11 +138,18 @@ final class HomeController extends AbstractController
         EntityManagerInterface $em,
         PostCheckRepository $postCheckRepository,
         MessageBusInterface $bus,
+        AnalysisAvailabilityService $analysisAvailability,
         AnalysisUsageLimiter $analysisUsageLimiter
     ): Response {
         if ($request->isMethod('POST')) {
             if (!$this->isCsrfTokenValid('text_check', (string) $request->request->get('_token'))) {
                 $this->addFlash('error', 'Invalid security token. Please try again.');
+
+                return $this->redirectToRoute('app_text_check');
+            }
+
+            if (!$analysisAvailability->isAiAnalysisAvailable()) {
+                $this->addFlash('error', $analysisAvailability->getAiUnavailableMessage());
 
                 return $this->redirectToRoute('app_text_check');
             }
@@ -223,7 +244,10 @@ final class HomeController extends AbstractController
             return $this->redirectToCreatedPostCheck($postCheck, $currentUser, $isAdmin);
         }
 
-        return $this->render('home/text_check.html.twig');
+        return $this->render('home/text_check.html.twig', [
+            'aiAnalysisAvailable' => $analysisAvailability->isAiAnalysisAvailable(),
+            'aiUnavailableMessage' => $analysisAvailability->getAiUnavailableMessage(),
+        ]);
     }
 
     private function normalizeManualText(string $text): string

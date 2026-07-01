@@ -44,6 +44,12 @@
                         </div>
                     {% endfor %}
 
+                    {% if not facebookAnalysisAvailable %}
+                        <div class="alert alert-warning">
+                            {{ facebookUnavailableMessage }}
+                        </div>
+                    {% endif %}
+
                     <form method="post">
                         <input type="hidden" name="_token" value="{{ csrf_token('facebook_check') }}">
 
@@ -57,6 +63,7 @@
                                 name="url"
                                 class="form-control form-control-lg"
                                 placeholder="https://facebook.com/post/..."
+                                {% if not facebookAnalysisAvailable %}disabled{% endif %}
                                 required
                             >
                         </div>
@@ -71,7 +78,8 @@
 
                         <button
                             type="submit"
-                            class="btn btn-danger btn-lg w-100">
+                            class="btn btn-danger btn-lg w-100"
+                            {% if not facebookAnalysisAvailable %}disabled{% endif %}>
                             🔍 Analyze Content
                         </button>
 

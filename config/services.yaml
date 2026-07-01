@@ -1,4 +1,9 @@
 parameters:
+    env(SERPER_API_KEY): ''
+    env(APIFY_API_TOKEN): ''
+    env(GROQ_API_KEY): ''
+    env(GROQ_MODEL): ''
+
     serper_api_key: '%env(SERPER_API_KEY)%'
     apify_api_token: '%env(APIFY_API_TOKEN)%'
 
@@ -19,6 +24,13 @@ services:
     App\Service\ApifyFacebookExtractorService:
         arguments:
             $apifyApiToken: '%apify_api_token%'
+
+    App\Service\AnalysisAvailabilityService:
+        arguments:
+            $serperApiKey: '%serper_api_key%'
+            $apifyApiToken: '%apify_api_token%'
+            $groqApiKey: '%env(GROQ_API_KEY)%'
+            $groqModel: '%env(GROQ_MODEL)%'
 
     App\Service\GroqAiService:
         arguments:
