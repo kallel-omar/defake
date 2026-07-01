@@ -54,6 +54,18 @@ class TestVerdictCommand extends Command
                 null,
                 InputOption::VALUE_OPTIONAL,
                 'Facebook post URL'
+            )
+            ->addOption(
+                'country',
+                null,
+                InputOption::VALUE_OPTIONAL,
+                'Manual text context country code, e.g. TN'
+            )
+            ->addOption(
+                'topic',
+                null,
+                InputOption::VALUE_OPTIONAL,
+                'Manual text context topic, e.g. sports'
             );
     }
 
@@ -74,10 +86,23 @@ class TestVerdictCommand extends Command
             'postUrl' => trim((string) ($input->getOption('post-url') ?? 'cli://test-post')),
         ];
 
+        $analysisContext = [];
+        $country = strtoupper(trim((string) ($input->getOption('country') ?? '')));
+        $topic = strtolower(trim((string) ($input->getOption('topic') ?? '')));
+
+        if ($country !== '') {
+            $analysisContext['country'] = $country;
+        }
+
+        if ($topic !== '') {
+            $analysisContext['topic'] = $topic;
+        }
+
         $result = $this->postAnalysisService->analyze(
             $sourceContext['postUrl'],
             $postText,
-            $sourceContext
+            $sourceContext,
+            $analysisContext
         );
 
         $io->section('Input Post');
@@ -85,6 +110,9 @@ class TestVerdictCommand extends Command
 
         $io->section('Source Context');
         $io->writeln(json_encode($sourceContext, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+
+        $io->section('Analysis Context');
+        $io->writeln(json_encode($analysisContext, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
         $io->section('Analysis Result');
         $io->writeln(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
