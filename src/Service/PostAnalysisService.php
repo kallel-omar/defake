@@ -18,6 +18,7 @@ class PostAnalysisService
     private readonly EvidenceFormatterService $evidenceFormatterService,
     private readonly ScoreBreakdownBuilder $scoreBreakdownBuilder,
     private readonly ScoreCalculator04B $scoreCalculator04B,
+    private readonly EvidenceSourceMetrics04B $evidenceSourceMetrics04B,
     private readonly OfficialSourceDetectorService $officialSourceDetectorService,
     private readonly EvidenceDecisionService $evidenceDecisionService,
     private readonly ClaimExtractionService $claimExtractionService,
@@ -581,7 +582,7 @@ private function explainSourceIndependence04B(array $officialSource, array $form
     $hosts = [];
 
     foreach ($formattedEvidenceSources as $source) {
-        $host = $this->extractEvidenceHost04B($source);
+        $host = $this->evidenceSourceMetrics04B->extractHost($source);
 
         if ($host !== '') {
             $hosts[$host] = true;
@@ -666,7 +667,7 @@ private function calculateSourceAuthorityScore04B(
         return 20;
     }
 
-    $relevantItems = $this->selectRelevantEvidenceItems04B($evidenceItems, $relevantIndexes);
+    $relevantItems = $this->evidenceSourceMetrics04B->selectRelevantItems($evidenceItems, $relevantIndexes);
 
     if (empty($relevantItems)) {
         return 0;
@@ -745,12 +746,12 @@ private function calculateSourceIndependenceScore04B(
     array $evidenceItems,
     array $relevantIndexes = []
 ): int {
-    $relevantItems = $this->selectRelevantEvidenceItems04B($evidenceItems, $relevantIndexes);
+    $relevantItems = $this->evidenceSourceMetrics04B->selectRelevantItems($evidenceItems, $relevantIndexes);
 
     $hosts = [];
 
     foreach ($relevantItems as $item) {
-        $host = $this->extractEvidenceHost04B($item);
+        $host = $this->evidenceSourceMetrics04B->extractHost($item);
         if ($host !== '') {
             $hosts[$host] = true;
         }
@@ -792,7 +793,7 @@ private function detectSourceDecision04B(
         return 'PRIMARY_OFFICIAL';
     }
 
-    $relevantItems = $this->selectRelevantEvidenceItems04B($evidenceItems, $relevantIndexes);
+    $relevantItems = $this->evidenceSourceMetrics04B->selectRelevantItems($evidenceItems, $relevantIndexes);
 
     if (empty($relevantItems)) {
         return 'UNKNOWN';
@@ -827,35 +828,6 @@ private function detectRiskDecision04B(string $postText): string
     };
 }
 
-private function selectRelevantEvidenceItems04B(array $evidenceItems, array $relevantIndexes = []): array
-{
-    if (empty($relevantIndexes)) {
-        return $evidenceItems;
-    }
 
-    $selected = [];
 
-    foreach ($relevantIndexes as $index) {
-        if (isset($evidenceItems[$index])) {
-            $selected[] = $evidenceItems[$index];
-        }
-    }
-
-    return $selected;
-}
-
-private function extractEvidenceHost04B(array $item): string
-{
-    $link = (string) ($item['link'] ?? '');
-
-    if ($link !== '') {
-        $host = parse_url($link, PHP_URL_HOST);
-
-        if (is_string($host) && $host !== '') {
-            return preg_replace('/^www\./', '', mb_strtolower($host)) ?? mb_strtolower($host);
-        }
-    }
-
-    return mb_strtolower(trim((string) ($item['source'] ?? '')));
-}
 }
