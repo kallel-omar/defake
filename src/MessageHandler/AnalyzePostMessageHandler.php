@@ -119,10 +119,26 @@ final class AnalyzePostMessageHandler
             $postCheck->setProcessingStep('Extracting claim and checking evidence');
             $this->em->flush();
 
+            $analysisContext = [];
+
+            if ($this->isManualTextCheck($postCheck)) {
+                $contextCountry = trim((string) $postCheck->getContextCountry());
+                $contextTopic = trim((string) $postCheck->getContextTopic());
+
+                if ($contextCountry !== '') {
+                    $analysisContext['country'] = $contextCountry;
+                }
+
+                if ($contextTopic !== '') {
+                    $analysisContext['topic'] = $contextTopic;
+                }
+            }
+
             $result = $this->postAnalysisService->analyze(
                 (string) $url,
                 $postText,
-                $sourceContext
+                $sourceContext,
+                $analysisContext
             );
 
             $postCheck->setStatus('completed');

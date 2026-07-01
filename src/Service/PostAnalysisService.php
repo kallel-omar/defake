@@ -18,7 +18,7 @@ class PostAnalysisService
 ) {
 }
 
-    public function analyze(string $url, string $postText, array $sourceContext = []): array
+    public function analyze(string $url, string $postText, array $sourceContext = [], array $analysisContext = []): array
 {
     $originalPostText = $postText;
 
@@ -59,7 +59,7 @@ class PostAnalysisService
         ];
     }
 
-    $searchQuery = $this->limitText($originalPostText, 1000) . "\n\nClaim to verify:\n" . $mainClaim;
+    $searchQuery = $this->buildSearchQuery($originalPostText, $mainClaim, $analysisContext);
 
   
 
@@ -168,6 +168,29 @@ $explanation04B = $this->analysisExplanationService04B->explainVerdict($verdict0
         }
 
         return mb_substr($text, 0, $maxChars) . "\n...[truncated]";
+    }
+
+    private function buildSearchQuery(string $originalPostText, string $mainClaim, array $analysisContext = []): string
+    {
+        $searchQuery = $this->limitText($originalPostText, 1000) . "\n\nClaim to verify:\n" . $mainClaim;
+
+        $contextLines = [];
+        $country = strtoupper(trim((string) ($analysisContext['country'] ?? '')));
+        $topic = trim((string) ($analysisContext['topic'] ?? ''));
+
+        if ($country !== '' && $country !== 'GLOBAL') {
+            $contextLines[] = 'Context country: ' . $country;
+        }
+
+        if ($topic !== '') {
+            $contextLines[] = 'Context topic: ' . $topic;
+        }
+
+        if ($contextLines !== []) {
+            $searchQuery .= "\n\nSearch context hints:\n" . implode("\n", $contextLines);
+        }
+
+        return $searchQuery;
     }
 
 
