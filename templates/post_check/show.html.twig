@@ -48,22 +48,22 @@
     or checkedUrl starts with 'text://manual/'
 %}
 
-{% if postCheck.verdict == 'NOT_VERIFIABLE' %}
-    {% set verdictClass = 'info' %}
-    {% set displayVerdict = postCheck.contentType|default('Content')|replace({'_':' '})|title %}
-{% elseif postCheck.verdict == 'Likely Trusted' %}
-    {% set verdictClass = 'success' %}
-    {% set displayVerdict = 'Likely Trusted' %}
-{% elseif postCheck.verdict == 'Suspicious' %}
-    {% set verdictClass = 'warning' %}
-    {% set displayVerdict = 'Suspicious' %}
-{% elseif postCheck.verdict == 'Likely Fake' %}
-    {% set verdictClass = 'danger' %}
-    {% set displayVerdict = 'Likely Fake' %}
-{% else %}
-    {% set verdictClass = 'secondary' %}
-    {% set displayVerdict = postCheck.verdict ?: 'Pending Analysis' %}
-{% endif %}
+        {% if postCheck.verdict == 'NOT_VERIFIABLE' %}
+            {% set verdictClass = 'info' %}
+            {% set displayVerdict = postCheck.contentType|default('Content')|replace({'_':' '})|title %}
+        {% elseif postCheck.verdict == 'Likely Trusted' %}
+            {% set verdictClass = 'success' %}
+            {% set displayVerdict = 'Likely Trusted' %}
+        {% elseif postCheck.verdict == 'Suspicious' %}
+            {% set verdictClass = 'warning' %}
+            {% set displayVerdict = 'Suspicious' %}
+        {% elseif postCheck.verdict == 'Likely Fake' %}
+            {% set verdictClass = 'danger' %}
+            {% set displayVerdict = 'Likely Fake' %}
+        {% else %}
+            {% set verdictClass = 'secondary' %}
+            {% set displayVerdict = postCheck.verdict ?: 'Pending Analysis' %}
+        {% endif %}
 
 {% set pageSubtitle = postCheck.verdict == 'NOT_VERIFIABLE'
     ? (
@@ -394,18 +394,62 @@
                 </div>
             </div>
         {% endif %}
+        {% if postCheck.lowConfidenceEvidenceCandidates is not empty %}
+            <div class="card shadow border-0 rounded-4 mb-4">
+                <div class="card-body p-4 p-md-5">
+                    <div class="d-flex align-items-start gap-3 mb-4">
+                        <div>
+                            <h4 class="fw-bold mb-2">Related result found, but not used as trusted evidence</h4>
+                            <p class="text-muted mb-0">
+                                DeFake found related results while searching, but they did not pass the trusted-source threshold.
+                                They are shown for transparency only and do not increase the credibility score.
+                            </p>
+                        </div>
+                    </div>
 
+                    {% for candidate in postCheck.lowConfidenceEvidenceCandidates %}
+                        <div class="border rounded-4 p-3 mb-3 bg-light">
+                            <div class="d-flex justify-content-between gap-3 flex-wrap mb-2">
+                                <a href="{{ candidate.link }}" target="_blank" rel="noopener noreferrer" class="fw-bold text-decoration-none">
+                                    {{ candidate.title }}
+                                </a>
+
+                                <span class="badge bg-warning text-dark border">
+                                    Not used as proof
+                                </span>
+                            </div>
+
+                            <p class="text-muted small mb-2">
+                                {{ candidate.source ?: 'Unknown source' }}
+                            </p>
+
+                            <div class="small text-muted">
+                                Source confidence:
+                                <strong>{{ candidate.confidenceScore }}/{{ candidate.requiredConfidenceScore }}</strong>
+                                &middot;
+                                {{ candidate.confidenceLabel ?: 'Low-confidence source' }}
+                            </div>
+
+                            <div class="small text-muted mt-1">
+                                Reason:
+                                source confidence below trusted evidence threshold.
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        {% endif %}
         <div class="card shadow border-0 rounded-4">
             <div class="card-body p-4 p-md-5">
 
                 <h4 class="fw-bold mb-2">Why this score?</h4>
 
-<p class="text-muted small mb-4">
-   DeFake combines evidence match, source authority, source independence, and risk safety.
-Safety rules may keep content Suspicious when evidence is weak, unclear, or not strong enough for a safe trusted verdict.
-</p>
+            <p class="text-muted small mb-4">
+            DeFake combines evidence match, source authority, source independence, and risk safety.
+            Safety rules may keep content Suspicious when evidence is weak, unclear, or not strong enough for a safe trusted verdict.
+            </p>
 
-                {% set scores = [
+     {% set scores = [
                    {
     label: 'Evidence Match',
     value: postCheck.evidenceScore,
@@ -436,87 +480,87 @@ Safety rules may keep content Suspicious when evidence is weak, unclear, or not 
 
                 {% for item in scores %}
                     {% set value = item.value ?? 0 %}
-{% set max = item.max ?? 25 %}
+        {% set max = item.max ?? 25 %}
 
-                    <div class="mb-4">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <label class="fw-bold">{{ item.label }}</label>
+                            <div class="mb-4">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <label class="fw-bold">{{ item.label }}</label>
 
-                            <span class="badge bg-light text-dark border">
-                                {{ value }}/{{ max }}
-                            </span>
-                        </div>
+                                    <span class="badge bg-light text-dark border">
+                                        {{ value }}/{{ max }}
+                                    </span>
+                                </div>
 
-                        <div class="progress rounded-pill mb-2" style="height: 10px;">
-                            <div class="progress-bar bg-{{ item.color }}"
-                                 style="width: {{ max > 0 ? min((value / max) * 100, 100) : 0 }}%">
+                                <div class="progress rounded-pill mb-2" style="height: 10px;">
+                                    <div class="progress-bar bg-{{ item.color }}"
+                                        style="width: {{ max > 0 ? min((value / max) * 100, 100) : 0 }}%">
+                                    </div>
+                                </div>
+
+                                <small class="text-muted lh-lg">
+                                    {{ item.reason }}
+                                </small>
                             </div>
-                        </div>
+                        {% endfor %}
 
-                        <small class="text-muted lh-lg">
-                            {{ item.reason }}
-                        </small>
+                        {% if is_granted('ROLE_ADMIN') %}
+                            <hr class="my-4">
+
+                            <div class="border rounded-4 p-3 bg-light">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <h6 class="fw-bold mb-0">Admin Debug: 04B Scoring Metadata</h6>
+
+                                    <span class="badge bg-dark">
+                                        {{ postCheck.scoringVersion ?: 'Unknown version' }}
+                                    </span>
+                                </div>
+
+                                <div class="row g-3 mb-3">
+                                    <div class="col-md-4">
+                                        <div class="small text-muted">Evidence Decision</div>
+                                        <div class="fw-semibold">{{ postCheck.evidenceDecision ?: 'N/A' }}</div>
+                                    </div>
+
+                                    <div class="col-md-4">
+                                        <div class="small text-muted">Source Decision</div>
+                                        <div class="fw-semibold">{{ postCheck.sourceDecision ?: 'N/A' }}</div>
+                                    </div>
+
+                                    <div class="col-md-4">
+                                        <div class="small text-muted">Risk Decision</div>
+                                        <div class="fw-semibold">{{ postCheck.riskDecision ?: 'N/A' }}</div>
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <div class="small text-muted mb-1">Caps Applied</div>
+
+                                    {% if postCheck.capsApplied %}
+                                        {% for cap in postCheck.capsApplied %}
+                                            <span class="badge bg-warning text-dark me-1">{{ cap }}</span>
+                                        {% endfor %}
+                                    {% else %}
+                                        <span class="text-muted small">No caps applied.</span>
+                                    {% endif %}
+                                </div>
+
+                                <div>
+                                    <div class="small text-muted mb-1">Score Breakdown JSON</div>
+
+                                    {% if postCheck.scoreBreakdown %}
+                                        <pre class="small bg-white border rounded-3 p-3 mb-0 overflow-auto">{{ postCheck.scoreBreakdown|json_encode }}</pre>
+                                    {% else %}
+                                        <div class="text-muted small">No score breakdown stored for this result.</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        {% endif %}
+
                     </div>
-                {% endfor %}
+                </div>
 
-                {% if is_granted('ROLE_ADMIN') %}
-                    <hr class="my-4">
+            {% endif %}
 
-                    <div class="border rounded-4 p-3 bg-light">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h6 class="fw-bold mb-0">Admin Debug: 04B Scoring Metadata</h6>
-
-                            <span class="badge bg-dark">
-                                {{ postCheck.scoringVersion ?: 'Unknown version' }}
-                            </span>
-                        </div>
-
-                        <div class="row g-3 mb-3">
-                            <div class="col-md-4">
-                                <div class="small text-muted">Evidence Decision</div>
-                                <div class="fw-semibold">{{ postCheck.evidenceDecision ?: 'N/A' }}</div>
-                            </div>
-
-                            <div class="col-md-4">
-                                <div class="small text-muted">Source Decision</div>
-                                <div class="fw-semibold">{{ postCheck.sourceDecision ?: 'N/A' }}</div>
-                            </div>
-
-                            <div class="col-md-4">
-                                <div class="small text-muted">Risk Decision</div>
-                                <div class="fw-semibold">{{ postCheck.riskDecision ?: 'N/A' }}</div>
-                            </div>
-                        </div>
-
-                        <div class="mb-3">
-                            <div class="small text-muted mb-1">Caps Applied</div>
-
-                            {% if postCheck.capsApplied %}
-                                {% for cap in postCheck.capsApplied %}
-                                    <span class="badge bg-warning text-dark me-1">{{ cap }}</span>
-                                {% endfor %}
-                            {% else %}
-                                <span class="text-muted small">No caps applied.</span>
-                            {% endif %}
-                        </div>
-
-                        <div>
-                            <div class="small text-muted mb-1">Score Breakdown JSON</div>
-
-                            {% if postCheck.scoreBreakdown %}
-                                <pre class="small bg-white border rounded-3 p-3 mb-0 overflow-auto">{{ postCheck.scoreBreakdown|json_encode }}</pre>
-                            {% else %}
-                                <div class="text-muted small">No score breakdown stored for this result.</div>
-                            {% endif %}
-                        </div>
-                    </div>
-                {% endif %}
-
-            </div>
         </div>
-
-    {% endif %}
-
-</div>
-{% endif %}
+        {% endif %}
 {% endblock %}

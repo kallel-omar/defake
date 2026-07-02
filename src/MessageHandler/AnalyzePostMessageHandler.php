@@ -198,6 +198,7 @@ $postCheck->setVerificationReason(
     $scoreBreakdown['riskSafety']['reason'] ?? $result['verificationReason'] ?? null
 );
             $postCheck->setEvidenceSources($result['evidenceSources'] ?? []);
+            $postCheck->setLowConfidenceEvidenceCandidates($result['lowConfidenceEvidenceCandidates'] ?? []);
 
             if (($result['verdict'] ?? null) === 'NOT_VERIFIABLE') {
                 $postCheck->setContentType('non_verifiable_content');

@@ -94,6 +94,9 @@ class PostCheck
     #[ORM\Column(nullable: true)]
     private ?array $evidenceSources = null;
 
+    #[ORM\Column(type: Types::JSON, nullable: true)]
+    private ?array $lowConfidenceEvidenceCandidates = null;
+
     #[ORM\Column(length: 255, nullable: true)]
     private ?string $mainClaim = null;
 
@@ -445,6 +448,18 @@ class PostCheck
     public function setEvidenceSources(?array $evidenceSources): static
     {
         $this->evidenceSources = $evidenceSources;
+
+        return $this;
+    }
+    
+    public function getLowConfidenceEvidenceCandidates(): ?array
+    {
+        return $this->lowConfidenceEvidenceCandidates;
+    }
+
+    public function setLowConfidenceEvidenceCandidates(?array $lowConfidenceEvidenceCandidates): static
+    {
+        $this->lowConfidenceEvidenceCandidates = $lowConfidenceEvidenceCandidates;
 
         return $this;
     }
