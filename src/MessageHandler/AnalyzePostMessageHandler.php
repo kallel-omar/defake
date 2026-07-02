@@ -202,8 +202,12 @@ $postCheck->setVerificationReason(
 
             if (($result['verdict'] ?? null) === 'NOT_VERIFIABLE') {
                 $postCheck->setContentType('non_verifiable_content');
-                $postCheck->setContentTitle('No verifiable claim detected');
-                $postCheck->setContentSummary($result['explanation'] ?? 'This post does not contain a clear factual claim.');
+                $postCheck->setContentTitle($result['contentTitle'] ?? 'No verifiable claim detected');
+                $postCheck->setContentSummary(
+                    $result['contentSummary']
+                    ?? $result['explanation']
+                    ?? 'This post does not contain a clear factual claim.'
+                );
             }
 
             $this->em->flush();

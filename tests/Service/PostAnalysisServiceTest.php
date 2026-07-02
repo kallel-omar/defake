@@ -11,6 +11,7 @@ use App\Service\EvidenceDecisionService;
 use App\Service\EvidenceFormatterService;
 use App\Service\EvidenceSourceMetrics04B;
 use App\Service\InternetEvidenceSearchService;
+use App\Service\NonVerifiableReasonService;
 use App\Service\OfficialSourceDetectorService;
 use App\Service\PostAnalysisService;
 use App\Service\ScoreBreakdownBuilder;
@@ -36,7 +37,7 @@ final class PostAnalysisServiceTest extends TestCase
     public function testAnalyzeReturnsNotVerifiableWithoutSearchingEvidence(): void
     {
         $url = 'https://facebook.com/example-post';
-        $postText = 'برشا كلام عام وغضب بدون claim واضح';
+        $postText = 'I feel like Tunisian football is becoming worse every year';
         $sourceContext = [];
 
         $claimVerifiability = [
@@ -67,6 +68,7 @@ final class PostAnalysisServiceTest extends TestCase
             $this->inertService(EvidenceDecisionService::class),
             $this->claimExtractionService,
             $this->claimVerifiabilityService,
+            new NonVerifiableReasonService(),
         );
 
         $result = $service->analyze($url, $postText, $sourceContext);
@@ -86,6 +88,9 @@ final class PostAnalysisServiceTest extends TestCase
             'sourceDecision' => 'NOT_ANALYZED',
             'riskDecision' => 'NOT_ANALYZED',
             'capsApplied' => ['NO_CLEAR_CLAIM'],
+            'nonVerifiableReasonCode' => 'OPINION_ONLY',
+            'contentTitle' => 'Opinion, not a factual claim',
+            'contentSummary' => 'The text expresses a personal view or evaluation, but does not state a specific checkable event.',
 
             'evidenceScore' => 0,
             'sourceScore' => 0,
@@ -95,8 +100,8 @@ final class PostAnalysisServiceTest extends TestCase
             'evidenceReason' => 'No evidence search was performed because no clear factual claim was detected.',
             'sourceReason' => 'Source analysis was skipped because the post is not a factual news claim.',
             'languageReason' => 'The post is not clear enough to be safely checked as a factual news claim.',
-            'verificationReason' => 'No clear factual claim detected.',
-            'explanation' => 'This post does not contain a clear verifiable factual claim. DeFake cannot safely check vague commentary, opinion, sarcasm, insults, emotional reactions, or future rumors without concrete details.',
+            'verificationReason' => 'Verification was skipped because the text is an opinion, not a factual claim.',
+            'explanation' => 'DeFake could not verify this because it is framed as opinion rather than a standalone factual claim.',
         ], $result);
     }
 
@@ -169,6 +174,26 @@ final class PostAnalysisServiceTest extends TestCase
 
         self::assertStringNotContainsString('Tunisia', $mainClaim);
         self::assertStringNotContainsString('sports', mb_strtolower($mainClaim));
+    }
+
+    public function testInsultLanguageDoesNotBlockClearExtractedFactualClaim(): void
+    {
+        $postText = 'الحكم فضيحة، الترجي فاز بالسوبر بعد ضربة جزاء غير صحيحة';
+        $mainClaim = 'الترجي فاز بالسوبر بعد ضربة جزاء غير صحيحة';
+        $capturedQuery = '';
+
+        $service = $this->createSearchQueryCapturingService($postText, $mainClaim, $capturedQuery, [
+            'country' => 'TN',
+            'topic' => 'sports',
+        ]);
+
+        $result = $service->analyze('text://manual/test', $postText, [], [
+            'country' => 'TN',
+            'topic' => 'sports',
+        ]);
+
+        self::assertNotSame('NOT_VERIFIABLE', $result['verdict']);
+        self::assertStringContainsString("Claim to verify:\n" . $mainClaim, $capturedQuery);
     }
 
     public function testScoringAndVerdictCollaboratorsDoNotAcceptAnalysisContext(): void
@@ -565,6 +590,7 @@ final class PostAnalysisServiceTest extends TestCase
             $evidenceDecisionService,
             $this->claimExtractionService,
             $this->claimVerifiabilityService,
+            new NonVerifiableReasonService(),
         );
     }
     
@@ -640,6 +666,7 @@ final class PostAnalysisServiceTest extends TestCase
             $evidenceDecisionService,
             $this->claimExtractionService,
             $this->claimVerifiabilityService,
+            new NonVerifiableReasonService(),
         );
     }
 }

@@ -94,4 +94,79 @@ final class AnalyzePostMessageHandlerTest extends TestCase
             'topic' => 'sports',
         ], $postAnalysisService->arguments[3] ?? null);
     }
+
+    public function testNotVerifiableContentFieldsUsePreciseAnalysisReason(): void
+    {
+        $postCheck = (new PostCheck())
+            ->setUrl('text://manual/question-test')
+            ->setPlatform('Text')
+            ->setContent('Did Moumen Rahmani sign with CSS?')
+            ->setContentType('manual_text')
+            ->setStatus('processing')
+            ->setScore(0)
+            ->setVerdict('PROCESSING')
+            ->setExplanation('Analysis is currently processing.')
+            ->setCreatedAt(new \DateTimeImmutable());
+
+        $postCheckRepository = $this->createMock(PostCheckRepository::class);
+        $postCheckRepository
+            ->expects(self::once())
+            ->method('find')
+            ->with(456)
+            ->willReturn($postCheck);
+
+        $facebookExtractor = $this->createMock(ApifyFacebookExtractorService::class);
+        $facebookExtractor
+            ->expects(self::never())
+            ->method('extract');
+
+        $externalLinkExtractor = $this->createMock(ExternalLinkExtractorService::class);
+        $externalLinkExtractor
+            ->expects(self::never())
+            ->method('extract');
+
+        $postAnalysisService = new class extends PostAnalysisService {
+            public function __construct()
+            {
+            }
+
+            public function analyze(string $url, string $postText, array $sourceContext = [], mixed ...$extra): array
+            {
+                return [
+                    'score' => 0,
+                    'verdict' => 'NOT_VERIFIABLE',
+                    'mainClaim' => null,
+                    'evidenceSources' => [],
+                    'scoreBreakdown' => null,
+                    'capsApplied' => ['NO_CLEAR_CLAIM'],
+                    'explanation' => 'DeFake could not verify this because questions need to be rewritten as a specific factual claim first.',
+                    'contentTitle' => 'Question detected',
+                    'contentSummary' => 'The text asks a question instead of making a factual assertion.',
+                    'verificationReason' => 'Verification was skipped because the text asks a question instead of making a claim.',
+                    'evidenceDecision' => 'NO_CLEAR_CLAIM',
+                    'sourceDecision' => 'NOT_ANALYZED',
+                    'riskDecision' => 'NOT_ANALYZED',
+                ];
+            }
+        };
+
+        $handler = new AnalyzePostMessageHandler(
+            $postCheckRepository,
+            $this->createMock(EntityManagerInterface::class),
+            $facebookExtractor,
+            $postAnalysisService,
+            $externalLinkExtractor,
+            $this->createMock(LoggerInterface::class),
+        );
+
+        $handler(new AnalyzePostMessage(456));
+
+        self::assertSame('non_verifiable_content', $postCheck->getContentType());
+        self::assertSame('Question detected', $postCheck->getContentTitle());
+        self::assertSame('The text asks a question instead of making a factual assertion.', $postCheck->getContentSummary());
+        self::assertSame(
+            'Verification was skipped because the text asks a question instead of making a claim.',
+            $postCheck->getVerificationReason()
+        );
+    }
 }

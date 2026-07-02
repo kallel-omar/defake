@@ -15,6 +15,7 @@ class PostAnalysisService
     private readonly EvidenceDecisionService $evidenceDecisionService,
     private readonly ClaimExtractionService $claimExtractionService,
     private readonly ClaimVerifiabilityService $claimVerifiabilityService,
+    private readonly NonVerifiableReasonService $nonVerifiableReasonService,
 ) {
 }
 
@@ -28,6 +29,12 @@ class PostAnalysisService
     $claimVerifiability = $this->claimVerifiabilityService->assess($mainClaim, $originalPostText);
 
     if (($claimVerifiability['verifiable'] ?? false) !== true) {
+        $nonVerifiableReason = $this->nonVerifiableReasonService->classify(
+            $originalPostText,
+            $mainClaim,
+            $claimVerifiability
+        );
+
         return [
             // Keep 0 for now because the database/UI may still expect an integer score.
             // The verdict tells the UI this is NOT_VERIFIABLE, not Likely Fake.
@@ -45,6 +52,9 @@ class PostAnalysisService
             'sourceDecision' => 'NOT_ANALYZED',
             'riskDecision' => 'NOT_ANALYZED',
             'capsApplied' => ['NO_CLEAR_CLAIM'],
+            'nonVerifiableReasonCode' => $nonVerifiableReason['code'],
+            'contentTitle' => $nonVerifiableReason['title'],
+            'contentSummary' => $nonVerifiableReason['summary'],
 
             // Old fields kept temporarily so Twig does not break
             'evidenceScore' => 0,
@@ -55,8 +65,8 @@ class PostAnalysisService
             'evidenceReason' => 'No evidence search was performed because no clear factual claim was detected.',
             'sourceReason' => 'Source analysis was skipped because the post is not a factual news claim.',
             'languageReason' => 'The post is not clear enough to be safely checked as a factual news claim.',
-            'verificationReason' => $claimVerifiability['reason'] ?? 'Verification was skipped because there is no specific factual claim to check.',
-            'explanation' => 'This post does not contain a clear verifiable factual claim. DeFake cannot safely check vague commentary, opinion, sarcasm, insults, emotional reactions, or future rumors without concrete details.',
+            'verificationReason' => $nonVerifiableReason['verificationReason'],
+            'explanation' => $nonVerifiableReason['explanation'],
         ];
     }
 
