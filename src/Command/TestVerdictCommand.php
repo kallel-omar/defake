@@ -62,11 +62,17 @@ class TestVerdictCommand extends Command
                 'Manual text context country code, e.g. TN'
             )
             ->addOption(
-                'topic',
-                null,
-                InputOption::VALUE_OPTIONAL,
-                'Manual text context topic, e.g. sports'
-            );
+    'topic',
+    null,
+    InputOption::VALUE_OPTIONAL,
+    'Manual text context topic, e.g. sports'
+)
+->addOption(
+    'debug-evidence',
+    null,
+    InputOption::VALUE_NONE,
+    'Show evidence search/ranking/formatting debug details'
+);
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -97,6 +103,9 @@ class TestVerdictCommand extends Command
         if ($topic !== '') {
             $analysisContext['topic'] = $topic;
         }
+        if ((bool) $input->getOption('debug-evidence')) {
+    $analysisContext['debugEvidence'] = true;
+}
 
         $result = $this->postAnalysisService->analyze(
             $sourceContext['postUrl'],

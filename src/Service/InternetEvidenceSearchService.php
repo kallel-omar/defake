@@ -19,89 +19,134 @@ class InternetEvidenceSearchService
     ) {
     }
 
-    public function search(string $postText, ?string $claim = null): array
-    {
-        $query = $postText;
-        $data = $this->callSerper('news', $query);
-        $items = $data['news'] ?? [];
+   public function search(string $postText, ?string $claim = null): array
+{
+    $query = $postText;
 
-        if (empty($items)) {
-            $data = $this->callSerper('search', $query);
-            $items = $data['organic'] ?? [];
-        }
+    $debug = [
+        'query' => $query,
+        'claim' => $claim,
+        'endpoint' => 'news',
+        'rawItemsCount' => 0,
+        'rankingRejected' => [],
+        'rankingAccepted' => [],
+    ];
 
-        if (empty($items)) {
-            return [
-                'text' => 'No internet evidence found.',
-                'items' => [],
-            ];
-        }
+    $data = $this->callSerper('news', $query);
+    $items = $data['news'] ?? [];
+    $debug['rawItemsCount'] = count($items);
 
-        $results = [];
-        $rankedItems = [];
+    if (empty($items)) {
+        $debug['endpoint'] = 'search';
 
-        foreach (array_slice($items, 0, 10) as $item) {
-            $relevanceScore = $this->evidenceRankingService->scoreEvidenceRelevance($item, $claim ?? $postText);
+        $data = $this->callSerper('search', $query);
+        $items = $data['organic'] ?? [];
+        $debug['rawItemsCount'] = count($items);
+    }
 
-            if ($relevanceScore < 3) {
-                continue;
-            }
+    if (empty($items)) {
+        return [
+            'text' => 'No internet evidence found.',
+            'items' => [],
+            'debug' => $debug,
+        ];
+    }
 
-            $link = $item['link'] ?? '';
+    $results = [];
+    $rankedItems = [];
 
-            if ($link === '') {
-                continue;
-            }
+    foreach (array_slice($items, 0, 10) as $item) {
+        $title = $item['title'] ?? 'No title';
+        $snippet = $item['snippet'] ?? '';
+        $link = $item['link'] ?? '';
 
-            $confidence = $this->sourceConfidenceService->score($link);
+        $relevanceScore = $this->evidenceRankingService->scoreEvidenceRelevance(
+            $item,
+            $claim ?? $postText
+        );
 
-            $rankedItems[] = [
-                'item' => $item,
+        if ($relevanceScore < 3) {
+            $debug['rankingRejected'][] = [
+                'reason' => 'relevance_score_below_threshold',
+                'title' => $title,
+                'link' => $link,
                 'relevanceScore' => $relevanceScore,
-                'sourceScore' => $confidence['score'] ?? 0,
-                'sourceLabel' => $confidence['label'] ?? 'Unknown',
             ];
+
+            continue;
         }
 
-        usort($rankedItems, static function (array $a, array $b): int {
-            return [$b['relevanceScore'], $b['sourceScore']]
-                <=> [$a['relevanceScore'], $a['sourceScore']];
-        });
-
-        if (empty($rankedItems)) {
-            return [
-                'text' => 'No relevant internet evidence found. Search results existed, but they did not match the key claim context.',
-                'items' => [],
+        if ($link === '') {
+            $debug['rankingRejected'][] = [
+                'reason' => 'missing_link',
+                'title' => $title,
+                'link' => $link,
+                'relevanceScore' => $relevanceScore,
             ];
+
+            continue;
         }
 
-        $rankedEvidenceItems = [];
+        $confidence = $this->sourceConfidenceService->score($link);
 
-        foreach (array_slice($rankedItems, 0, 5) as $rankedItem) {
-            $item = $rankedItem['item'];
-            $rankedEvidenceItems[] = $item;
+        $rankedItems[] = [
+            'item' => $item,
+            'relevanceScore' => $relevanceScore,
+            'sourceScore' => $confidence['score'] ?? 0,
+            'sourceLabel' => $confidence['label'] ?? 'Unknown',
+        ];
+    }
 
-            $title = $item['title'] ?? 'No title';
-            $snippet = $item['snippet'] ?? 'No snippet';
-            $link = $item['link'] ?? 'No link';
+    usort($rankedItems, static function (array $a, array $b): int {
+        return [$b['relevanceScore'], $b['sourceScore']]
+            <=> [$a['relevanceScore'], $a['sourceScore']];
+    });
 
-            $results[] = "- Title: {$title}
+    foreach ($rankedItems as $rankedItem) {
+        $item = $rankedItem['item'];
+
+        $debug['rankingAccepted'][] = [
+            'title' => $item['title'] ?? 'No title',
+            'link' => $item['link'] ?? '',
+            'source' => $item['source'] ?? '',
+            'relevanceScore' => $rankedItem['relevanceScore'],
+            'sourceScore' => $rankedItem['sourceScore'],
+            'sourceLabel' => $rankedItem['sourceLabel'],
+        ];
+    }
+
+    if (empty($rankedItems)) {
+        return [
+            'text' => 'No relevant internet evidence found. Search results existed, but they did not match the key claim context.',
+            'items' => [],
+            'debug' => $debug,
+        ];
+    }
+
+    $rankedEvidenceItems = [];
+
+    foreach (array_slice($rankedItems, 0, 5) as $rankedItem) {
+        $item = $rankedItem['item'];
+        $rankedEvidenceItems[] = $item;
+
+        $title = $item['title'] ?? 'No title';
+        $snippet = $item['snippet'] ?? 'No snippet';
+        $link = $item['link'] ?? 'No link';
+
+        $results[] = "- Title: {$title}
   Snippet: {$snippet}
   Link: {$link}
   Relevance Score: {$rankedItem['relevanceScore']}
   Source Confidence: {$rankedItem['sourceScore']}/100
   Source Type: {$rankedItem['sourceLabel']}";
-        }
-
-        return [
-            'text' => implode("\n\n", $results),
-            'items' => $rankedEvidenceItems,
-        ];
     }
 
-   
-
-    
+    return [
+        'text' => implode("\n\n", $results),
+        'items' => $rankedEvidenceItems,
+        'debug' => $debug,
+    ];
+}
 
     private function callSerper(string $type, string $query): array
     {

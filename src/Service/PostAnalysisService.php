@@ -77,11 +77,24 @@ $internetEvidenceData = $this->internetEvidenceSearchService->search($searchQuer
 
         $officialSource = $this->officialSourceDetectorService->detect($sourceContext, $postText);
 
-$formattedEvidenceSources = $this->evidenceFormatterService->formatSources(
-    $evidenceItems,
-    $mainClaim,
-    $evidenceDecision['relevantIndexes'] ?? []
-);
+$evidenceFormatterDebug = null;
+
+if (($analysisContext['debugEvidence'] ?? false) === true) {
+    $formattedEvidenceResult = $this->evidenceFormatterService->formatSourcesWithDebug(
+        $evidenceItems,
+        $mainClaim,
+        $evidenceDecision['relevantIndexes'] ?? []
+    );
+
+    $formattedEvidenceSources = $formattedEvidenceResult['sources'];
+    $evidenceFormatterDebug = $formattedEvidenceResult['debug'];
+} else {
+    $formattedEvidenceSources = $this->evidenceFormatterService->formatSources(
+        $evidenceItems,
+        $mainClaim,
+        $evidenceDecision['relevantIndexes'] ?? []
+    );
+}
 
 $noDisplayablePositiveEvidence = false;
 $rawEvidenceStatus = strtoupper((string) ($evidenceDecision['status'] ?? 'UNKNOWN'));
@@ -175,6 +188,17 @@ $explanation04B = $this->analysisExplanationService04B->explainVerdict($verdict0
 if ($noDisplayableNonContradictoryEvidence) {
     $explanation04B = 'DeFake did not find any usable/displayable evidence source that can support or refute this claim. The claim remains Suspicious until a clear displayable source is available.';
 }
+ $evidenceDebug = null;
+
+if (($analysisContext['debugEvidence'] ?? false) === true) {
+ $evidenceDebug = [
+    'search' => $internetEvidenceData['debug'] ?? null,
+    'rankedEvidenceItems' => $evidenceItems,
+    'evidenceDecision' => $evidenceDecision,
+    'formattedEvidenceSources' => $formattedEvidenceSources,
+    'formatter' => $evidenceFormatterDebug,
+];
+}
         return [
            'score' => $verdict04B['score'],
 'verdict' => $verdict04B['verdict'],
@@ -190,6 +214,7 @@ if ($noDisplayableNonContradictoryEvidence) {
 'riskDecision' => $riskDecision04B,
 'capsApplied' => $verdict04B['capsApplied'],
             'evidenceSources' => $formattedEvidenceSources,
+            'evidenceDebug' => $evidenceDebug,
 
             'evidenceScore' => (int) ($scoreBreakdown04B['evidenceMatch']['score'] ?? 0),
 'sourceScore' => (int) ($scoreBreakdown04B['sourceAuthority']['score'] ?? 0),
@@ -202,6 +227,7 @@ if ($noDisplayableNonContradictoryEvidence) {
 'verificationReason' => $scoreBreakdown04B['riskSafety']['reason'] ?? '',
             'explanation' => $explanation04B,
         ];
+       
     }
 
     private function limitText(?string $text, int $maxChars): string
