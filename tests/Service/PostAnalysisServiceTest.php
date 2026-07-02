@@ -76,6 +76,8 @@ final class PostAnalysisServiceTest extends TestCase
             'verdict' => 'NOT_VERIFIABLE',
             'mainClaim' => null,
             'evidenceSources' => [],
+            'lowConfidenceEvidenceCandidates' => [],
+        
 
             'scoringVersion' => '04B',
             'scoreBreakdown' => null,
@@ -388,6 +390,81 @@ final class PostAnalysisServiceTest extends TestCase
         self::assertSame('PARTIALLY_SUPPORTED', $result['evidenceDecision']);
         self::assertSame('Suspicious', $result['verdict']);
     }
+    public function testLowConfidenceRelatedEvidenceIsReturnedSeparatelyFromTrustedEvidence(): void
+{
+    $postText = 'Mo2men Rahmani signed with CSS for two years.';
+    $mainClaim = 'Mo2men Rahmani signed with CSS for two years.';
+
+    $result = $this->createEvidenceFlowService(
+        $postText,
+        $mainClaim,
+        [
+            [
+                'title' => 'Mo2men Rahmani CSS two years',
+                'snippet' => 'A weak page mentions Mo2men Rahmani and CSS.',
+                'link' => 'https://unverified-example.test/story',
+                'source' => 'Unverified Example',
+            ],
+        ],
+        [
+            'status' => 'PARTIALLY_SUPPORTED',
+            'supportCount' => 1,
+            'relevantIndexes' => [0],
+            'reason' => 'One search result appears related to the main claim.',
+        ]
+    )->analyze('text://manual/test', $postText);
+
+    self::assertSame([], $result['evidenceSources']);
+    self::assertCount(1, $result['lowConfidenceEvidenceCandidates']);
+
+    self::assertSame(
+        'Mo2men Rahmani CSS two years',
+        $result['lowConfidenceEvidenceCandidates'][0]['title']
+    );
+
+    self::assertSame(
+        'https://unverified-example.test/story',
+        $result['lowConfidenceEvidenceCandidates'][0]['link']
+    );
+
+    self::assertSame(
+        'source_confidence_below_display_threshold',
+        $result['lowConfidenceEvidenceCandidates'][0]['rejectionReason']
+    );
+
+    self::assertSame(35, $result['lowConfidenceEvidenceCandidates'][0]['confidenceScore']);
+    self::assertSame(60, $result['lowConfidenceEvidenceCandidates'][0]['requiredConfidenceScore']);
+
+    self::assertSame('Suspicious', $result['verdict']);
+}
+    public function testDisplayableEvidenceDoesNotCreateLowConfidenceCandidate(): void
+{
+    $postText = 'The company launched a new AI tool today.';
+    $mainClaim = 'The company launched a new AI tool today.';
+
+    $result = $this->createEvidenceFlowService(
+        $postText,
+        $mainClaim,
+        [
+            [
+                'title' => 'Company launched a new AI tool today',
+                'snippet' => 'The new AI tool was announced today.',
+                'link' => 'https://reuters.com/technology/example',
+                'source' => 'Reuters',
+            ],
+        ],
+        [
+            'status' => 'PARTIALLY_SUPPORTED',
+            'supportCount' => 1,
+            'relevantIndexes' => [0],
+            'reason' => 'One search result appears related to the main claim.',
+        ]
+    )->analyze('text://manual/test', $postText);
+
+    self::assertCount(1, $result['evidenceSources']);
+    self::assertSame([], $result['lowConfidenceEvidenceCandidates']);
+}
+
 
     /**
      * Creates an object that satisfies a concrete service type without calling its constructor.
@@ -405,6 +482,7 @@ final class PostAnalysisServiceTest extends TestCase
     {
         return (new ReflectionClass($className))->newInstanceWithoutConstructor();
     }
+    
 
     private function createSearchQueryCapturingService(
         string $postText,
@@ -489,6 +567,7 @@ final class PostAnalysisServiceTest extends TestCase
             $this->claimVerifiabilityService,
         );
     }
+    
 
     private function createEvidenceFlowService(
         string $postText,

@@ -34,7 +34,8 @@ class PostAnalysisService
             'score' => 0,
             'verdict' => 'NOT_VERIFIABLE',
             'mainClaim' => null,
-            'evidenceSources' => [],
+'evidenceSources' => [],
+'lowConfidenceEvidenceCandidates' => [],
 
             // New 04B scoring system
             'scoringVersion' => '04B',
@@ -77,24 +78,18 @@ $internetEvidenceData = $this->internetEvidenceSearchService->search($searchQuer
 
         $officialSource = $this->officialSourceDetectorService->detect($sourceContext, $postText);
 
-$evidenceFormatterDebug = null;
+$formattedEvidenceResult = $this->evidenceFormatterService->formatSourcesWithDebug(
+    $evidenceItems,
+    $mainClaim,
+    $evidenceDecision['relevantIndexes'] ?? []
+);
 
-if (($analysisContext['debugEvidence'] ?? false) === true) {
-    $formattedEvidenceResult = $this->evidenceFormatterService->formatSourcesWithDebug(
-        $evidenceItems,
-        $mainClaim,
-        $evidenceDecision['relevantIndexes'] ?? []
-    );
+$formattedEvidenceSources = $formattedEvidenceResult['sources'];
+$evidenceFormatterDebug = $formattedEvidenceResult['debug'];
 
-    $formattedEvidenceSources = $formattedEvidenceResult['sources'];
-    $evidenceFormatterDebug = $formattedEvidenceResult['debug'];
-} else {
-    $formattedEvidenceSources = $this->evidenceFormatterService->formatSources(
-        $evidenceItems,
-        $mainClaim,
-        $evidenceDecision['relevantIndexes'] ?? []
-    );
-}
+$lowConfidenceEvidenceCandidates = $this->buildLowConfidenceEvidenceCandidates(
+    $evidenceFormatterDebug['rejectedSources'] ?? []
+);
 
 $noDisplayablePositiveEvidence = false;
 $rawEvidenceStatus = strtoupper((string) ($evidenceDecision['status'] ?? 'UNKNOWN'));
@@ -214,6 +209,7 @@ if (($analysisContext['debugEvidence'] ?? false) === true) {
 'riskDecision' => $riskDecision04B,
 'capsApplied' => $verdict04B['capsApplied'],
             'evidenceSources' => $formattedEvidenceSources,
+            'lowConfidenceEvidenceCandidates' => $lowConfidenceEvidenceCandidates,
             'evidenceDebug' => $evidenceDebug,
 
             'evidenceScore' => (int) ($scoreBreakdown04B['evidenceMatch']['score'] ?? 0),
@@ -301,6 +297,35 @@ private function isVerificationContextSafe04B(
     }
 
     return true;
+}
+private function buildLowConfidenceEvidenceCandidates(array $rejectedSources): array
+{
+    $candidates = [];
+
+    foreach ($rejectedSources as $source) {
+        if (($source['reason'] ?? '') !== 'source_confidence_below_display_threshold') {
+            continue;
+        }
+
+        $link = trim((string) ($source['link'] ?? ''));
+
+        if ($link === '') {
+            continue;
+        }
+
+        $candidates[] = [
+            'title' => (string) ($source['title'] ?? 'No title'),
+            'link' => $link,
+            'source' => $source['source'] ?? null,
+            'rejectionReason' => 'source_confidence_below_display_threshold',
+            'confidenceScore' => (int) ($source['confidenceScore'] ?? 0),
+            'requiredConfidenceScore' => (int) ($source['requiredConfidenceScore'] ?? 60),
+            'confidenceLabel' => (string) ($source['confidenceLabel'] ?? 'Unknown'),
+            'confidenceType' => (string) ($source['confidenceType'] ?? 'unknown'),
+        ];
+    }
+
+    return $candidates;
 }
 
 }
