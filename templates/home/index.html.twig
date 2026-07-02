@@ -1,103 +1,171 @@
 {% extends 'base.html.twig' %}
 
-{% block title %}DeFake - Fake News Detection{% endblock %}
+{% block title %}DeFake - AI Credibility Scanner{% endblock %}
+
+{% block body_class %}defake-page defake-home-body{% endblock %}
 
 {% block body %}
-<div class="container py-5">
+<div class="defake-home-shell">
+    <section class="defake-hero defake-hero-redesigned">
+        <div class="container">
+            <div class="defake-home-intro">
+                <div class="defake-home-intro-copy">
+                    <div class="defake-kicker">AI-assisted credibility scanner</div>
 
-    <div class="row justify-content-center">
-        <div class="col-lg-8">
+                    <h1 class="defake-hero-title">
+                        Detect misinformation before it spreads.
+                    </h1>
 
-            <div class="text-center mb-5">
+                    <p class="defake-hero-copy">
+                        Paste a claim, rumor, post text, or public statement. DeFake extracts the checkable claim, searches for evidence, and explains the result.
+                    </p>
 
-                <span class="badge bg-danger mb-3 px-3 py-2">
-                    Public Beta
-                </span>
-
-                <h1 class="display-3 fw-bold">
-                    DeFake
-                </h1>
-
-                <p class="lead text-muted mb-2">
-                    Analyze public claims, rumors, social media posts, articles and online content
-                    to detect misinformation and fake news.
-                </p>
-
-                <div class="small text-muted">
-                    &#128679; AI-generated credibility analysis &middot; Verify important information independently
+                    <div class="defake-hero-actions">
+                        <a href="{{ path('app_text_check') }}" class="btn defake-btn defake-btn-primary">
+                            Start With Text
+                        </a>
+                        <a href="{{ path('app_facebook_check') }}" class="btn defake-btn defake-btn-secondary">
+                            Use Facebook Link
+                        </a>
+                    </div>
                 </div>
 
+                <div class="defake-home-signal-board" aria-label="DeFake scan pipeline">
+                    <div class="defake-signal-board-header">
+                        <span>Scan Path</span>
+                        <strong>
+                            {% if aiAnalysisAvailable %}
+                                Online
+                            {% else %}
+                                Limited
+                            {% endif %}
+                        </strong>
+                    </div>
+
+                    <div class="defake-signal-track">
+                        <div>
+                            <span>01</span>
+                            <strong>Claim</strong>
+                            <small>Find the factual assertion</small>
+                        </div>
+                        <div>
+                            <span>02</span>
+                            <strong>Evidence</strong>
+                            <small>Search public context</small>
+                        </div>
+                        <div>
+                            <span>03</span>
+                            <strong>Sources</strong>
+                            <small>Filter weak signals</small>
+                        </div>
+                        <div>
+                            <span>04</span>
+                            <strong>Result</strong>
+                            <small>Explain the verdict</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="defake-console-section" id="scan-console">
+        <div class="container">
+            <div class="defake-section-heading defake-console-heading">
+                <p>Start here</p>
+                <h2>Choose the clearest input you have.</h2>
             </div>
 
-            <div class="card shadow-lg border-0 rounded-4">
-                <div class="card-body p-5">
-
-                    {% for message in app.flashes('error') %}
-                        <div class="alert alert-danger">
-                            {{ message }}
+            <div class="defake-console-layout">
+                <aside class="defake-guidance-rail" aria-label="Recommended DeFake workflow">
+                    <div class="defake-guidance-item is-active">
+                        <span>01</span>
+                        <div>
+                            <strong>Text is recommended</strong>
+                            <p>Paste the claim or post text directly for the fastest and most reliable scan.</p>
                         </div>
-                    {% endfor %}
+                    </div>
 
-                    {% for message in app.flashes('info') %}
-                        <div class="alert alert-info">
-                            {{ message }}
+                    <div class="defake-guidance-item">
+                        <span>02</span>
+                        <div>
+                            <strong>Add context if useful</strong>
+                            <p>Country and topic help when names, clubs, or local references are ambiguous.</p>
                         </div>
-                    {% endfor %}
+                    </div>
+
+                    <div class="defake-guidance-item">
+                        <span>03</span>
+                        <div>
+                            <strong>Review the report</strong>
+                            <p>DeFake shows the claim, evidence signals, source quality, and explanation.</p>
+                        </div>
+                    </div>
+                </aside>
+
+                <article class="defake-scan-panel defake-scan-panel-primary">
+                    <div class="defake-scan-panel-top">
+                        <div>
+                            <span class="defake-panel-eyebrow">Recommended</span>
+                            <h3>Analyze text or claim</h3>
+                        </div>
+                        <div class="defake-reliability-chip">Best accuracy path</div>
+                    </div>
+
+                    <p class="defake-panel-copy">
+                        Paste a claim, rumor, Facebook post text, article excerpt, or public statement.
+                    </p>
 
                     {% if not aiAnalysisAvailable %}
-                        <div class="alert alert-warning">
+                        <div class="alert defake-alert" role="alert">
                             {{ aiUnavailableMessage }}
                         </div>
                     {% endif %}
 
-                    <form method="post" action="{{ path('app_text_check') }}">
+                    <form method="post" action="{{ path('app_text_check') }}" class="defake-form">
                         <input type="hidden" name="_token" value="{{ csrf_token('text_check') }}">
 
-                        <div class="mb-4">
-                            <label for="claim_text" class="form-label fw-semibold">
-                                Paste a claim or news text
+                        <div class="mb-3">
+                            <label for="home_claim_text" class="form-label">
+                                Claim or public text
                             </label>
 
                             <textarea
-                                id="claim_text"
+                                id="home_claim_text"
                                 name="claim_text"
-                                class="form-control form-control-lg rounded-4"
-                                rows="7"
+                                class="form-control defake-input defake-textarea"
+                                rows="9"
                                 minlength="8"
                                 maxlength="5000"
                                 required
-                                placeholder="Example: Yann Sasse the Esperance Sportive player died."></textarea>
-
-                            <div class="form-text">
-                                Works with football rumors, public figures, transfers, injuries, deaths, dates, numbers, sanctions and official announcements.
-                            </div>
+                                placeholder="Example: The club won after an incorrect penalty decision."></textarea>
                         </div>
 
-                        <div class="row g-3 mb-4">
-                            <div class="col-md-6">
-                                <label for="context_country" class="form-label fw-semibold">
-                                    Country or region <span class="text-muted fw-normal">(optional)</span>
+                        <div class="defake-context-grid">
+                            <div>
+                                <label for="home_context_country" class="form-label">
+                                    Country or region <span>(optional)</span>
                                 </label>
 
                                 <select
-                                    id="context_country"
+                                    id="home_context_country"
                                     name="context_country"
-                                    class="form-select rounded-4">
+                                    class="form-select defake-input">
                                     {% for countryCode, countryLabel in countryOptions %}
                                         <option value="{{ countryCode }}">{{ countryLabel }}</option>
                                     {% endfor %}
                                 </select>
                             </div>
 
-                            <div class="col-md-6">
-                                <label for="context_topic" class="form-label fw-semibold">
-                                    Topic <span class="text-muted fw-normal">(optional)</span>
+                            <div>
+                                <label for="home_context_topic" class="form-label">
+                                    Topic <span>(optional)</span>
                                 </label>
 
                                 <select
-                                    id="context_topic"
+                                    id="home_context_topic"
                                     name="context_topic"
-                                    class="form-select rounded-4">
+                                    class="form-select defake-input">
                                     <option value="">Not sure</option>
                                     <option value="sports">Sports</option>
                                     <option value="politics">Politics</option>
@@ -111,69 +179,62 @@
                             </div>
                         </div>
 
-                        <button
-                            type="submit"
-                            class="btn btn-danger btn-lg w-100 rounded-pill"
-                            {% if not aiAnalysisAvailable %}disabled{% endif %}>
-                            &#128269; Analyze Claim
-                        </button>
+                        <div class="defake-action-row">
+                            <button
+                                type="submit"
+                                class="btn defake-btn defake-btn-primary"
+                                {% if not aiAnalysisAvailable %}disabled{% endif %}>
+                                Analyze Text
+                            </button>
+                            <a href="{{ path('app_facebook_check') }}" class="btn defake-btn defake-btn-secondary">
+                                Check Facebook Link
+                            </a>
+                        </div>
                     </form>
-
-                    <div class="text-center mt-4">
-                        <a href="{{ path('app_facebook_check') }}" class="btn btn-outline-dark rounded-pill px-4">
-                            Check a Facebook post URL instead
-                        </a>
-                    </div>
-
-                </div>
+                </article>
             </div>
-
-            <div class="row text-center mt-5">
-
-                <div class="col-md-4 mb-3">
-                    <div class="card border-0 shadow-sm h-100">
-                        <div class="card-body">
-                            <h3>&#9889;</h3>
-                            <h5>Fast Analysis</h5>
-                            <p class="text-muted small">
-                                Get credibility results within seconds.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-md-4 mb-3">
-                    <div class="card border-0 shadow-sm h-100">
-                        <div class="card-body">
-                            <h3>&#129302;</h3>
-                            <h5>AI Review</h5>
-                            <p class="text-muted small">
-                                AI extracts claims and evaluates evidence, sources and language.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-md-4 mb-3">
-                    <div class="card border-0 shadow-sm h-100">
-                        <div class="card-body">
-                            <h3>&#128202;</h3>
-                            <h5>Detailed Report</h5>
-                            <p class="text-muted small">
-                                View score, verdict, evidence and explanation.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-
-            </div>
-
-            <p class="text-center text-muted small mt-4 mb-0">
-                DeFake is a beta tool. Results may contain errors and should not replace professional fact-checking.
-            </p>
-
         </div>
-    </div>
+    </section>
 
+    <section class="defake-after-submit-section">
+        <div class="container">
+            <div class="defake-after-submit">
+                <div class="defake-section-heading">
+                    <p>After you submit</p>
+                    <h2>DeFake turns messy content into a structured credibility report.</h2>
+                </div>
+
+                <div class="defake-after-grid">
+                    <div>
+                        <span>Extract</span>
+                        <strong>Identifies the claim</strong>
+                        <p>Separates the factual assertion from opinion, jokes, or extra commentary.</p>
+                    </div>
+
+                    <div>
+                        <span>Search</span>
+                        <strong>Finds public evidence</strong>
+                        <p>Looks for sources related to the exact claim being checked.</p>
+                    </div>
+
+                    <div>
+                        <span>Filter</span>
+                        <strong>Checks source quality</strong>
+                        <p>Weak or low-confidence evidence is separated from stronger signals.</p>
+                    </div>
+
+                    <div>
+                        <span>Explain</span>
+                        <strong>Shows the result</strong>
+                        <p>Gives a verdict, score, evidence context, and reasoned explanation.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="defake-disclaimer">
+                DeFake is an AI-assisted credibility tool. It does not replace professional fact-checkers. Always verify important information independently.
+            </div>
+        </div>
+    </section>
 </div>
 {% endblock %}

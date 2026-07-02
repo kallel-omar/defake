@@ -2,90 +2,125 @@
 
 {% block title %}Admin Dashboard - DeFake{% endblock %}
 
+{% block body_class %}defake-page defake-admin-body{% endblock %}
+
 {% block body %}
 <div class="container py-5">
-    <h1 class="mb-4">Admin Dashboard</h1>
-
-    <div class="row g-4 mb-5">
-        <div class="col-md-6">
-            <div class="card bg-dark text-white border-secondary">
-                <div class="card-body">
-                    <h5 class="card-title">Total Analyses</h5>
-                    <p class="display-5">{{ totalChecks }}</p>
-                </div>
-            </div>
+    <section class="defake-admin-hero">
+        <div>
+            <span class="defake-panel-eyebrow">Control room</span>
+            <h1>Admin Dashboard</h1>
+            <p>
+                Monitor recent credibility scans, user activity, and moderation actions from one focused console.
+            </p>
         </div>
 
-        <div class="col-md-6">
-            <div class="card bg-dark text-white border-secondary">
-                <div class="card-body">
-                    <h5 class="card-title">Total Users</h5>
-                    <p class="display-5">{{ totalUsers }}</p>
-                </div>
-            </div>
+        <div class="defake-admin-status">
+            <span>System View</span>
+            <strong>Live</strong>
         </div>
-    </div>
+    </section>
 
-    <h2 class="mb-3">Latest Checks</h2>
+    <section class="defake-admin-metrics" aria-label="Admin metrics">
+        <article class="defake-admin-metric-card">
+            <span>Total Analyses</span>
+            <strong>{{ totalChecks }}</strong>
+            <small>All submitted checks</small>
+        </article>
 
-    <div class="table-responsive">
-        <table class="table table-dark table-striped table-bordered align-middle">
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>User</th>
-                    <th>URL</th>
-                    <th>Status</th>
-                    <th>Score</th>
-                    <th>Verdict</th>
-                    <th>Date</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for check in latestChecks %}
+        <article class="defake-admin-metric-card">
+            <span>Total Users</span>
+            <strong>{{ totalUsers }}</strong>
+            <small>Registered accounts</small>
+        </article>
+    </section>
+
+    <section class="defake-admin-panel">
+        <div class="defake-admin-panel-header">
+            <div>
+                <span class="defake-panel-eyebrow">Latest activity</span>
+                <h2>Recent Checks</h2>
+            </div>
+            <span class="defake-admin-count">{{ latestChecks|length }} records</span>
+        </div>
+
+        <div class="table-responsive defake-admin-table-wrap">
+            <table class="table table-hover align-middle defake-admin-table">
+                <thead>
                     <tr>
-                        <td>{{ check.id }}</td>
-                        <td>
-    {% if check.user %}
-        {{ check.user.email }}
-    {% else %}
-        <span class="text">Guest</span>
-    {% endif %}
-</td>
-                        <td>
-                            <a href="{{ check.url }}" target="_blank" class="text-info">
-                                {{ check.url|slice(0, 60) }}...
-                            </a>
-                        </td>
-                        <td>{{ check.status }}</td>
-                        <td>{{ check.score ?? '-' }}</td>
-                        <td>{{ check.verdict ?? '-' }}</td>
-                        <td>{{ check.createdAt ? check.createdAt|date('Y-m-d H:i') : '-' }}</td>
-                        <td>
-                        <a href="{{ path('app_post_check_show', { id: check.id }) }}" class="btn btn-sm btn-info">
-    Details
-</a>
-    <form
-        method="post"
-        action="{{ path('app_admin_check_delete', { id: check.id }) }}"
-        onsubmit="return confirm('Are you sure you want to delete this search?');"
-    >
-        <input type="hidden" name="_token" value="{{ csrf_token('delete_check_' ~ check.id) }}">
+                        <th>ID</th>
+                        <th>User</th>
+                        <th>URL</th>
+                        <th>Status</th>
+                        <th>Score</th>
+                        <th>Verdict</th>
+                        <th>Date</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for check in latestChecks %}
+                        <tr>
+                            <td data-label="ID">
+                                <span class="defake-admin-id">#{{ check.id }}</span>
+                            </td>
+                            <td data-label="User">
+                                {% if check.user %}
+                                    <span class="defake-admin-user">{{ check.user.email }}</span>
+                                {% else %}
+                                    <span class="defake-admin-muted">Guest</span>
+                                {% endif %}
+                            </td>
+                            <td data-label="URL">
+                                <a href="{{ check.url }}" target="_blank" rel="noopener" class="defake-admin-url">
+                                    {{ check.url|slice(0, 60) }}{% if check.url|length > 60 %}...{% endif %}
+                                </a>
+                            </td>
+                            <td data-label="Status">
+                                <span class="defake-admin-chip">{{ check.status }}</span>
+                            </td>
+                            <td data-label="Score">
+                                <span class="defake-admin-score">{{ check.score ?? '-' }}</span>
+                            </td>
+                            <td data-label="Verdict">
+                                <span class="defake-admin-chip defake-admin-chip-verdict">{{ check.verdict ?? '-' }}</span>
+                            </td>
+                            <td data-label="Date">
+                                {{ check.createdAt ? check.createdAt|date('Y-m-d H:i') : '-' }}
+                            </td>
+                            <td data-label="Action">
+                                <div class="defake-admin-actions">
+                                    <a href="{{ path('app_post_check_show', { id: check.id }) }}" class="btn btn-sm btn-info">
+                                        Details
+                                    </a>
 
-        <button class="btn btn-sm btn-danger">
-            Delete
-        </button>
-    </form>
-</td>
-                    </tr>
-                {% else %}
-                    <tr>
-                        <td colspan="6" class="text-center">No checks found.</td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
+                                    <form
+                                        method="post"
+                                        action="{{ path('app_admin_check_delete', { id: check.id }) }}"
+                                        onsubmit="return confirm('Are you sure you want to delete this search?');"
+                                    >
+                                        <input type="hidden" name="_token" value="{{ csrf_token('delete_check_' ~ check.id) }}">
+
+                                        <button class="btn btn-sm btn-outline-danger">
+                                            Delete
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="8">
+                                <div class="defake-admin-empty">
+                                    <span>No checks found.</span>
+                                    <p>New analysis activity will appear here as soon as users submit scans.</p>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
 </div>
 {% endblock %}
