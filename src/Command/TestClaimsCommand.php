@@ -16,6 +16,8 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 )]
 class TestClaimsCommand extends Command
 {
+    private const NO_VERIFIABLE_CLAIM = 'NO_VERIFIABLE_CLAIM';
+
     public function __construct(
         private readonly ClaimExtractionService $claimExtractionService
     ) {
@@ -37,7 +39,7 @@ class TestClaimsCommand extends Command
 
         $text = (string) $input->getArgument('text');
 
-        $claims = $this->claimExtractionService->extract($text);
+        $claims = $this->normalizeClaimsForDisplay($this->claimExtractionService->extract($text));
 
         if (empty($claims)) {
             $io->warning('No claims extracted.');
@@ -51,5 +53,25 @@ class TestClaimsCommand extends Command
         }
 
         return Command::SUCCESS;
+    }
+
+    private function normalizeClaimsForDisplay(array $claims): array
+    {
+        return array_values(array_filter(array_map(
+            static function (mixed $claim): ?string {
+                if (!is_scalar($claim)) {
+                    return null;
+                }
+
+                $claim = trim((string) $claim);
+
+                if ($claim === '' || mb_strtoupper($claim) === self::NO_VERIFIABLE_CLAIM) {
+                    return null;
+                }
+
+                return $claim;
+            },
+            $claims
+        )));
     }
 }

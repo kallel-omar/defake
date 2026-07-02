@@ -281,6 +281,42 @@ final class ClaimExtractionServiceTest extends TestCase
         self::assertSame([$mainClaim], $result);
     }
 
+    public function testArabicSportsPenaltyClaimIsExtractedAsRealClaim(): void
+    {
+        $postText = 'النادي الافريقي خسر نقطتين أمام سليمان بعد احتساب ضربة جزاء غير صحيحة لسليمان';
+        $mainClaim = 'النادي الافريقي خسر نقطتين أمام سليمان بعد احتساب ضربة جزاء غير صحيحة لسليمان';
+
+        $result = $this->serviceWithAiResponse($this->aiResponse([
+            'content_type' => 'claim',
+            'fact_checkable' => true,
+            'summary' => 'The post says Club Africain lost two points after an incorrect penalty was awarded to Soliman.',
+            'reason' => 'Contains a clear sports referee claim.',
+            'main_claim' => $mainClaim,
+            'secondary_claims' => [],
+        ]))->extract($postText);
+
+        self::assertSame([$mainClaim], $result);
+    }
+
+    public function testLongJamelHaimoudiPostStillReturnsNoSingleClearClaimForNow(): void
+    {
+        $postText = <<<TEXT
+جمال الحيمودي قال إن لقطة النادي الإفريقي وسليمان فيها أكثر من زاوية، الحكم كان بعيد، تقنية الفار تأخرت، الجماهير غضبانة، والإعلام زاد ضغط كبير على الحكام. الكلام يخلط بين التسلل وضربة الجزاء والهدف الملغى وأداء الجامعة والتحكيم في تونس من غير ما يختار واقعة واحدة واضحة للتحقق.
+TEXT;
+
+        // TODO: Later classify this as MULTI_CLAIM_NEEDS_SELECTION instead of no verifiable claim.
+        $result = $this->serviceWithAiResponse($this->aiResponse([
+            'content_type' => 'mixed',
+            'fact_checkable' => false,
+            'summary' => 'The post discusses several referee-related complaints without selecting one factual claim.',
+            'reason' => 'No single clear factual claim is selected.',
+            'main_claim' => null,
+            'secondary_claims' => [],
+        ]))->extract($postText);
+
+        self::assertSame([self::NO_VERIFIABLE_CLAIM], $result);
+    }
+
     private function serviceWithAiResponse(?string $aiResponse): ClaimExtractionService
     {
         $groqAiService = $this->createMock(GroqAiService::class);

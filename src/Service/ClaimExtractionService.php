@@ -55,7 +55,7 @@ Messy input tolerance rule:
 - Try to understand the intended public factual claim before deciding it is not verifiable.
 - Do not reject a claim only because a person name, club name, organization name, or action is misspelled.
 - If the text contains a possible public subject plus a factual action, classify it as fact_checkable=true and return the best claim using the wording present in the post.
-- Examples of factual actions include: died, injured, signed, joined, left, transferred, arrested, appointed, resigned, suspended, banned, announced, denied, won, lost, postponed, cancelled, approved, or sanctioned.
+- Examples of factual actions include: died, injured, signed, joined, left, transferred, arrested, appointed, resigned, suspended, banned, announced, denied, won, lost, postponed, cancelled, approved, sanctioned, تحصل على, احتسب, تم احتساب, تم إلغاء, ألغى, خسر نقطتين, خسر ثلاثة نقاط, فاز بعد, هدف مسبوق بتسلل, or ضربة جزاء غير صحيحة.
 - Do not invent missing facts or replace misspelled entities with guessed official names.
 - Keep the original ambiguous or misspelled wording when needed.
 - Still return fact_checkable=false for jokes, insults, pure opinions, personal feelings, spam, or vague text with no subject and no factual action.
@@ -164,6 +164,7 @@ Important Arabic / Maghrebi Arabic rules:
 - Do not translate slang literally.
 - Insults, mockery, emotion, or anger are not factual claims unless they include a specific checkable event or assertion.
 - Words like "طحين", "طحانة", "بارازيت", "منحل", "كز", "خونة", "فاسدين", and similar slang are usually opinion/insult, not factual claims.
+- In Arabic sports/referee contexts, actions such as "تحصل على", "احتسب", "تم احتساب", "تم إلغاء", "ألغى", "خسر نقطتين", "خسر ثلاثة نقاط", "فاز بعد", "هدف مسبوق بتسلل", and "ضربة جزاء غير صحيحة" are factual actions when attached to a public match, club, team, referee decision, penalty, goal, offside, or opponent.
 - If the post is only anger, criticism, mockery, or opinion, return fact_checkable=false.
 - Keep Arabic names and entities exactly as written.
 - Do not normalize or guess club names, city names, people names, or organization names.
@@ -185,6 +186,8 @@ Examples of verifiable main claims:
 - "The organization denied the report."
 - "The match was postponed."
 - "The coach resigned."
+- "النادي الصفاقسي تحصل على ضربة جزاء غير صحيحة ضد القيروان في آخر دقيقة"
+- "النادي الافريقي خسر نقطتين أمام سليمان بعد احتساب ضربة جزاء غير صحيحة لسليمان"
 
 Examples of non-verifiable content:
 - "This minister is useless."
@@ -931,7 +934,7 @@ PROMPT;
     private function containsStrongFactVerb(string $text): bool
     {
         return preg_match(
-            '/(announced|approved|signed|transferred|joined|launched|opened|closed|denied|confirmed|resigned|appointed|scheduled|postponed|cancelled|canceled|won|lost|increased|decreased|arrested|sentenced|published|created|removed|renewed|terminated|decided|agreed|صفقة|انتقال|تعاقد|وقع|وقّع|انضم|اقترب|حسم|اعلن|أعلن|اعلنت|أعلنت|قرر|قررت|صادق|الغى|ألغى|تاجل|تأجل|تأجيل|فاز|خسر|ارتفع|انخفض|استقال|عين|عيّن|تعيين|نشر|نشرت|تمديد|جدد|أنهى|فسخ|أوقف|ايقاف|إيقاف|حكم|سجن|اعتقل|توفي|وفاة)/iu',
+            '/(announced|approved|signed|transferred|joined|launched|opened|closed|denied|confirmed|resigned|appointed|scheduled|postponed|cancelled|canceled|won|lost|increased|decreased|arrested|sentenced|published|created|removed|renewed|terminated|decided|agreed|صفقة|انتقال|تعاقد|وقع|وقّع|انضم|اقترب|حسم|اعلن|أعلن|اعلنت|أعلنت|قرر|قررت|صادق|الغى|ألغى|تاجل|تأجل|تأجيل|فاز|خسر|ارتفع|انخفض|استقال|عين|عيّن|تعيين|نشر|نشرت|تمديد|جدد|أنهى|فسخ|أوقف|ايقاف|إيقاف|حكم|سجن|اعتقل|توفي|وفاة|تحصل\s+على|احتسب|تم\s+احتساب|تم\s+إلغاء|تم\s+الغاء|خسر\s+نقطتين|خسر\s+ثلاثة\s+نقاط|خسر\s+ثلاث\s+نقاط|فاز\s+بعد|هدف\s+مسبوق\s+بتسلل|ضربة\s+جزاء\s+غير\s+صحيحة)/iu',
             $text
         ) === 1;
     }

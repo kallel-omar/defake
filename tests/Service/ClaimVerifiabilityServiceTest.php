@@ -119,6 +119,25 @@ final class ClaimVerifiabilityServiceTest extends TestCase
             ],
         ];
 
+        yield 'Arabic sports referee penalty claim is accepted' => [
+            'النادي الصفاقسي تحصل على ضربة جزاء غير صحيحة ضد القيروان في آخر دقيقة',
+            [
+                'verifiable' => true,
+                'reason' => 'The claim contains an identifiable subject, a factual action, and enough checkable context.',
+                'missingElements' => [],
+                'claimType' => 'sports',
+                'subjectPresent' => true,
+                'actionPresent' => true,
+                'checkableDetailPresent' => false,
+                'vaguenessLevel' => 'low',
+                'signals' => [
+                    'hasStrongAction' => true,
+                    'hasSoftAction' => false,
+                    'hasCheckableDetail' => false,
+                ],
+            ],
+        ];
+
         yield 'vague Arabic rumor is rejected' => [
             'عاجل مصادر خاصة مفاجأة قريبا',
             [

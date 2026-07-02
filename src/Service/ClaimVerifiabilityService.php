@@ -350,6 +350,9 @@ class ClaimVerifiabilityService
             'اشتري', 'اشترت', 'باع', 'باعت', 'اطلق', 'اطلقت',
             'افتتح', 'افتتحت', 'اغلق', 'اغلقت', 'ارتفع', 'انخفض',
             'فاز', 'خسر', 'توفي', 'اعتقل', 'اعتقلت', 'زار', 'زارت',
+            'تحصل على', 'احتسب', 'تم احتساب', 'تم إلغاء', 'ألغى',
+            'خسر نقطتين', 'خسر ثلاثة نقاط', 'خسر ثلاث نقاط', 'فاز بعد',
+            'هدف مسبوق بتسلل', 'ضربة جزاء غير صحيحة',
 
             // English generic factual actions
             'announced', 'confirmed', 'denied', 'decided', 'approved', 'rejected',
@@ -436,7 +439,7 @@ class ClaimVerifiabilityService
             return 'weather';
         }
 
-        if ($this->containsAny($text, ['مباراه', 'مباراة', 'لاعب', 'مدرب', 'نادي', 'منتخب', 'match', 'player', 'coach', 'club', 'team'])) {
+        if ($this->containsAny($text, ['مباراه', 'مباراة', 'لاعب', 'مدرب', 'نادي', 'منتخب', 'ضربة جزاء', 'تسلل', 'هدف مسبوق بتسلل', 'match', 'player', 'coach', 'club', 'team'])) {
             return 'sports';
         }
 
