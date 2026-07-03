@@ -9,7 +9,6 @@ use Symfony\Component\Form\FormBuilderInterface;
 use Symfony\Component\OptionsResolver\OptionsResolver;
 use Symfony\Component\Validator\Constraints\Length;
 use Symfony\Component\Validator\Constraints\NotBlank;
-use Symfony\Component\Validator\Constraints\NotCompromisedPassword;
 
 class ChangePasswordFormType extends AbstractType
 {
@@ -27,11 +26,10 @@ class ChangePasswordFormType extends AbstractType
                     'constraints' => [
                         new NotBlank(message: 'Please enter a password.'),
                         new Length(
-                            min: 8,
+                            min: 6,
                             minMessage: 'Your password should be at least {{ limit }} characters.',
                             max: 4096,
                         ),
-                        new NotCompromisedPassword(message: 'This password has appeared in a data breach. Please choose a different one.'),
                     ],
                     'label' => 'New password',
                 ],
