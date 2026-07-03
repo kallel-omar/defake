@@ -1,0 +1,65 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Reset Password - DeFake{% endblock %}
+
+{% block body %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-7 col-lg-5">
+
+            <div class="text-center mb-4">
+                <span class="badge bg-danger rounded-pill px-3 py-2 mb-3">
+                    Account Recovery
+                </span>
+
+                <h1 class="fw-bold mb-2">Reset your password</h1>
+
+                <p class="text-muted mb-0">
+                    Enter your account email and we will send a secure reset link.
+                </p>
+            </div>
+
+            <div class="card shadow-lg border-0 rounded-4">
+                <div class="card-body p-4 p-md-5">
+
+                    {{ form_start(requestForm) }}
+
+                        <div class="mb-4">
+                            {{ form_label(requestForm.email, 'Email address', {
+                                label_attr: {
+                                    class: 'form-label fw-semibold'
+                                }
+                            }) }}
+
+                            {{ form_widget(requestForm.email, {
+                                attr: {
+                                    class: 'form-control form-control-lg rounded-3',
+                                    placeholder: 'you@example.com'
+                                }
+                            }) }}
+
+                            {{ form_errors(requestForm.email) }}
+                        </div>
+
+                        <button class="btn btn-danger btn-lg w-100 rounded-3" type="submit">
+                            Send password reset email
+                        </button>
+
+                    {{ form_end(requestForm) }}
+
+                    <hr class="my-4">
+
+                    <p class="text-center text-muted mb-0">
+                        Remembered your password?
+                        <a href="{{ path('app_login') }}" class="text-danger fw-semibold text-decoration-none">
+                            Sign in
+                        </a>
+                    </p>
+
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}
