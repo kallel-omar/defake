@@ -13,9 +13,12 @@ final class AnalysisExplanationService04B
 
     public function explainSourceAuthority(array $officialSource, array $formattedEvidenceSources): string
     {
-        if (($officialSource['official'] ?? false) === true) {
-            return 'The original Facebook source appears to be official for this type of claim.';
-        }
+        if (
+    ($officialSource['official'] ?? false) === true
+    && ($officialSource['selfAnnouncement'] ?? false) === true
+) {
+    return 'The original Facebook source is a confirmed official first-party source for this claim.';
+}
 
         if (empty($formattedEvidenceSources)) {
             return 'No relevant evidence source was available to assess source authority.';
@@ -101,13 +104,15 @@ final class AnalysisExplanationService04B
         }
 
         $distinctSources = count($hosts);
-
-        if (($officialSource['official'] ?? false) === true) {
-            return sprintf(
-                'The original source is official; %d additional distinct evidence source(s) were found.',
-                $distinctSources
-            );
-        }
+if (
+    ($officialSource['official'] ?? false) === true
+    && ($officialSource['selfAnnouncement'] ?? false) === true
+) {
+    return sprintf(
+        'The original source is an official first-party source; %d additional distinct evidence source(s) were found.',
+        $distinctSources
+    );
+}
 
         return sprintf(
             'DeFake found %d distinct relevant evidence source(s). Repeated sources count less than independent sources.',
@@ -125,9 +130,11 @@ final class AnalysisExplanationService04B
         $reason = trim((string) ($evidenceDecision['reason'] ?? ''));
 
         $hasUsableEvidenceSource = !empty($formattedEvidenceSources);
-        $isOfficialSource = ($officialSource['official'] ?? false) === true;
+        $isOfficialSelfAnnouncement =
+    ($officialSource['official'] ?? false) === true
+    && ($officialSource['selfAnnouncement'] ?? false) === true;
 
-        if (!$hasUsableEvidenceSource && $isOfficialSource) {
+        if (!$hasUsableEvidenceSource && $isOfficialSelfAnnouncement) {
             return match ($status) {
                 'SUPPORTED' => 'The original source appears to be official and the post concerns its own activity, so DeFake treats it as primary evidence for the claim.',
                 'PARTIALLY_SUPPORTED' => 'The original source appears official, but the claim is only partially supported by the available context.',
@@ -136,7 +143,7 @@ final class AnalysisExplanationService04B
             };
         }
 
-        if (!$hasUsableEvidenceSource && !$isOfficialSource) {
+        if (!$hasUsableEvidenceSource && !$isOfficialSelfAnnouncement) {
             return match ($status) {
                 'SUPPORTED' => 'The evidence relation was marked as supported, but DeFake could not keep any usable source to display. This is treated as unresolved support, not full confirmation.',
                 'PARTIALLY_SUPPORTED' => 'The claim may have partial support, but DeFake could not keep any usable source to display.',

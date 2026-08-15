@@ -51,13 +51,13 @@ class SourceConfidenceService
             ];
         }
 
-        if ($this->isOrganizationDomain($host)) {
-            return [
-                'score' => 55,
-                'label' => 'Organization website',
-                'type' => 'organization',
-            ];
-        }
+        if ($this->isAcademicSource($host)) {
+    return [
+        'score' => 75,
+        'label' => 'Academic / educational institution',
+        'type' => 'academic',
+    ];
+}
 
         return [
             'score' => 35,
@@ -151,14 +151,20 @@ class SourceConfidenceService
 
         return false;
     }
+    private function isAcademicSource(string $host): bool
+{
+    return str_ends_with($host, '.edu')
+        || str_contains($host, '.edu.')
+        || str_contains($host, '.ac.')
+        || str_ends_with($host, '.ac.uk')
+        || str_ends_with($host, '.ac.tn');
+}
 
     private function isOrganizationDomain(string $host): bool
-    {
-        return str_ends_with($host, '.org')
-            || str_ends_with($host, '.int')
-            || str_ends_with($host, '.edu')
-            || str_ends_with($host, '.ac.tn');
-    }
+{
+    return str_ends_with($host, '.org')
+        || str_ends_with($host, '.int');
+}
 
     private function isSocialMedia(string $host): bool
     {

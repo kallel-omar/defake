@@ -28,14 +28,19 @@ class OfficialSourceDetectorService
     ];
 
     public function __construct(
-        private readonly HttpClientInterface $httpClient,
-        private readonly GroqAiService $groqAiService,
-        private readonly string $serperApiKey,
-        private readonly LoggerInterface $logger,
-    ) {
-    }
+    private readonly HttpClientInterface $httpClient,
+    private readonly GroqAiService $groqAiService,
+    private readonly string $serperApiKey,
+    private readonly EntityIdentityResolverService $entityIdentityResolverService,
+    private readonly LoggerInterface $logger,
+) {
+}
 
-    public function detect(array $sourceContext, string $postText = ''): array
+    public function detect(
+    array $sourceContext,
+    string $postText = '',
+    string $mainClaim = ''
+): array
     {
         $pageName = $this->extractPageName($sourceContext);
 
@@ -51,11 +56,12 @@ class OfficialSourceDetectorService
         $googleEvidence = $this->searchOfficialEvidence($pageName);
 
         $prompt = $this->buildOfficialPagePrompt(
-            $pageName,
-            $sourceContext,
-            $postText,
-            $googleEvidence
-        );
+    $pageName,
+    $sourceContext,
+    $postText,
+    $mainClaim,
+    $googleEvidence
+);
 
         $data = $this->groqAiService->askJson($prompt, 1000);
 
@@ -63,10 +69,23 @@ class OfficialSourceDetectorService
             return $this->fallbackDetection($pageName, $googleEvidence);
         }
 
-        $official = (bool) ($data['official'] ?? false);
-        $category = $this->normalizeCategory((string) ($data['category'] ?? 'unknown'));
-        $confidence = $this->normalizeConfidence($data['confidence'] ?? 0);
-        $reason = trim((string) ($data['reason'] ?? 'No reason provided.')) ?: 'No reason provided.';
+    $official = (bool) ($data['official'] ?? false);
+$selfAnnouncement = (bool) ($data['selfAnnouncement'] ?? false);
+
+$claimActor = trim((string) ($data['claimActor'] ?? ''));
+$sameOrganization = (bool) ($data['sameOrganization'] ?? false);
+
+        $category = $this->normalizeCategory(
+            (string) ($data['category'] ?? 'unknown')
+        );
+
+        $confidence = $this->normalizeConfidence(
+            $data['confidence'] ?? 0
+        );
+
+        $reason = trim(
+            (string) ($data['reason'] ?? 'No reason provided.')
+        ) ?: 'No reason provided.';
 
         $nonOfficialCategories = [
             'media',
@@ -77,22 +96,60 @@ class OfficialSourceDetectorService
         ];
 
         if (in_array($category, $nonOfficialCategories, true)) {
-            $official = false;
-            $reason .= ' The detected category is not treated as an official organization source.';
-        }
+         $official = false;
+        $selfAnnouncement = false;
 
-        if ($official && $confidence < 75) {
-            $official = false;
-            $reason .= ' Confidence is too low to treat this page as official.';
-        }
+                $reason .= ' The detected category is not treated as an official organization source.';
+            }
 
-        return $this->result(
+            if ($official && $confidence < 75) {
+                $official = false;
+                $selfAnnouncement = false;
+
+                $reason .= ' Confidence is too low to treat this page as official.';
+            }
+
+            if (!$official) {
+                $selfAnnouncement = false;
+            }
+            $identityResolution = null;
+
+// AI models can fail to recognize the same organization when its name
+// appears in another language, transliteration, abbreviation, or alias.
+//
+// Only use entity resolution as a fallback when:
+// - the Facebook source itself was confirmed official;
+// - the model did not accept the post as a self-announcement;
+// - the model extracted an actor from the claim.
+if (
+    $official
+    && !$selfAnnouncement
+    && $claimActor !== ''
+) {
+    $identityResolution = $this->entityIdentityResolverService->resolve(
+        $pageName,
+        $claimActor
+    );
+
+    if (($identityResolution['sameEntity'] ?? false) === true) {
+        $sameOrganization = true;
+        $selfAnnouncement = true;
+
+        $reason .= sprintf(
+            ' The claim actor and the official page were independently resolved as the same real-world entity using %s.',
+            (string) ($identityResolution['method'] ?? 'entity resolution')
+        );
+    }
+}
+
+           return $this->result(
             $official,
             $category,
             $confidence,
-            $reason
-        );
-    }
+            $reason,
+            $selfAnnouncement
+);
+        }
 
     public function evaluateEvidenceUrl(
         string $url,
@@ -142,17 +199,23 @@ class OfficialSourceDetectorService
     }
 
     private function buildOfficialPagePrompt(
-        string $pageName,
-        array $sourceContext,
-        string $postText,
-        string $googleEvidence
-    ): string {
+    string $pageName,
+    array $sourceContext,
+    string $postText,
+    string $mainClaim,
+    string $googleEvidence
+): string {
         $sourceJson = $this->safeJson($sourceContext);
 
         return <<<PROMPT
 You are DeFake's official-source detector.
 
-Decide if this Facebook page is the OFFICIAL page of the organization itself.
+You must make TWO separate decisions:
+
+1. Is this Facebook page genuinely the official page of the organization?
+2. Is the claim in this specific post a first-party announcement about the organization's own activity, decision, member, service, event, transaction, appointment, signing, release, sanction, result, or another matter it directly controls?
+
+These are separate decisions.
 
 Facebook page name:
 {$pageName}
@@ -162,6 +225,13 @@ Facebook source context:
 
 Post text:
 {$postText}
+Main factual claim extracted from the post:
+{$mainClaim}
+
+Important:
+Use the MAIN FACTUAL CLAIM when deciding selfAnnouncement.
+Determine who performs the action in the claim and whether that actor is the organization controlling this Facebook page.
+Do not return selfAnnouncement=false merely because the post contains other names, such as a player, employee, customer, opponent, minister, executive, or third party involved in the organization's own action.
 
 Google evidence:
 {$googleEvidence}
@@ -184,12 +254,31 @@ Important:
 - If the page is only talking ABOUT the organization, return false.
 - If uncertain, return false.
 - If Google evidence contains "official page", "page officielle", "official website", or "site officiel", this strongly supports official=true.
-- The post must concern the organization’s own activity, announcement, members, services, or decisions.
+For "official":
+- Judge whether the page itself genuinely belongs to the organization.
+- The page may still be official even when a specific post discusses another organization.
+
+For "selfAnnouncement":
+- Return true only when the claim concerns something the organization itself did, decided, announced, controls, manages, employs, signed, appointed, released, organized, published, or is directly responsible for.
+- Return false when the post is reporting a claim about another independent organization or event outside its authority.
+- Return false if the relationship is unclear.
+When deciding selfAnnouncement, compare organizations by real-world identity, not exact spelling.
+
+Important multilingual identity rules:
+- The same organization may appear under different languages, translations, abbreviations, transliterations, acronyms, or commonly used names.
+- Do not treat two names as different organizations merely because one is Arabic and the other is French or English.
+- Determine whether the claim's subject refers to the same real-world organization that controls the Facebook page.
+- First identify the actor/subject performing the claimed action.
+- Then determine whether that actor and the Facebook page organization are the same real-world entity.
+- If they are the same entity and the action is under that organization's control, selfAnnouncement=true.
 
 Return ONLY valid JSON:
 
 {
   "official": false,
+  "selfAnnouncement": false,
+  "claimActor": "organization or person performing the main claimed action",
+  "sameOrganization": false,
   "category": "unknown",
   "confidence": 0,
   "reason": "short reason"
@@ -259,27 +348,29 @@ PROMPT;
     }
 
     private function extractPageName(array $sourceContext): string
-    {
-        $pageName = trim((string) ($sourceContext['pageName'] ?? ''));
+{
+    // Prefer the human-readable Facebook display name.
+    // Apify's pageName may sometimes contain a compact username/slug.
+    $userName = trim((string) ($sourceContext['userName'] ?? ''));
 
-        if ($pageName !== '') {
-            return $pageName;
-        }
-
-        $userName = trim((string) ($sourceContext['userName'] ?? ''));
-
-        if ($userName !== '') {
-            return $userName;
-        }
-
-        $name = trim((string) ($sourceContext['name'] ?? ''));
-
-        if ($name !== '') {
-            return $name;
-        }
-
-        return '';
+    if ($userName !== '') {
+        return $userName;
     }
+
+    $pageName = trim((string) ($sourceContext['pageName'] ?? ''));
+
+    if ($pageName !== '') {
+        return $pageName;
+    }
+
+    $name = trim((string) ($sourceContext['name'] ?? ''));
+
+    if ($name !== '') {
+        return $name;
+    }
+
+    return '';
+}
 
     private function searchOfficialEvidence(string $pageName): string
     {
@@ -539,17 +630,19 @@ PROMPT;
         ) ?: '{}';
     }
 
-    private function result(
-        bool $official,
-        string $category,
-        int $confidence,
-        string $reason
-    ): array {
-        return [
-            'official' => $official,
-            'category' => $this->normalizeCategory($category),
-            'confidence' => max(0, min(100, $confidence)),
-            'reason' => $reason,
-        ];
-    }
+   private function result(
+    bool $official,
+    string $category,
+    int $confidence,
+    string $reason,
+    bool $selfAnnouncement = false
+): array {
+    return [
+        'official' => $official,
+        'selfAnnouncement' => $official && $selfAnnouncement,
+        'category' => $this->normalizeCategory($category),
+        'confidence' => max(0, min(100, $confidence)),
+        'reason' => $reason,
+    ];
+}
 }

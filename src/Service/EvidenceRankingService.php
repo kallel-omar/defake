@@ -5,25 +5,46 @@ namespace App\Service;
 class EvidenceRankingService
 {
     public function scoreEvidenceRelevance(array $item, string $claim): int
-    {
-        $title = (string) ($item['title'] ?? '');
-        $snippet = (string) ($item['snippet'] ?? '');
+{
+    $title = (string) ($item['title'] ?? '');
+    $snippet = (string) ($item['snippet'] ?? '');
 
-        $haystack = mb_strtolower($title . ' ' . $snippet);
-        $terms = $this->extractEvidenceTerms($claim);
+    $haystack = mb_strtolower($title . ' ' . $snippet);
+    $terms = $this->extractEvidenceTerms($claim);
 
-        $score = 0;
+    $score = 0;
 
-        foreach ($terms as $term) {
-            $term = mb_strtolower($term);
+    foreach ($terms as $term) {
+        $normalizedTerm = mb_strtolower($term);
 
-            if (str_contains($haystack, $term)) {
-                $score++;
-            }
+        if (!str_contains($haystack, $normalizedTerm)) {
+            continue;
         }
 
-        return $score;
+        // Normal matching term.
+        $weight = 1;
+
+        // Numbers, years, percentages and measurable values are strong
+        // context anchors and should receive more weight.
+        if (preg_match('/^\d+(?:[.,]\d+)?%?$/u', $term) === 1) {
+            $weight = 3;
+        }
+
+        // Acronyms such as UPC, FIFA, WHO, IMF, etc. are strong entity anchors.
+        if (preg_match('/^[A-Z]{2,6}$/u', $term) === 1) {
+            $weight = 3;
+        }
+
+        // Longer names/terms are usually more discriminating than generic words.
+        if (mb_strlen($term) >= 8) {
+            $weight = max($weight, 2);
+        }
+
+        $score += $weight;
     }
+
+    return $score;
+}
 
     private function extractEvidenceTerms(string $text): array
     {

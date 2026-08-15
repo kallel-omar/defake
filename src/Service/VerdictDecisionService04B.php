@@ -48,7 +48,7 @@ final class VerdictDecisionService04B
         }
 
         $verdict = match (true) {
-            $totalScore >= 80 => 'Likely Trusted',
+            $totalScore >= 76 => 'Likely Trusted',
             $totalScore >= 40 => 'Suspicious',
             default => 'Likely Fake',
         };
@@ -64,9 +64,10 @@ final class VerdictDecisionService04B
         }
 
         $isOfficialSelfAnnouncement =
-            ($officialSource['official'] ?? false) === true
-            && $sourceAuthority >= 23
-            && $status === 'SUPPORTED';
+    ($officialSource['official'] ?? false) === true
+    && ($officialSource['selfAnnouncement'] ?? false) === true
+    && $sourceAuthority >= 23
+    && $status === 'SUPPORTED';
 
         if (
             $verdict === 'Likely Trusted'
@@ -158,9 +159,12 @@ final class VerdictDecisionService04B
         array $evidenceItems,
         array $relevantIndexes = []
     ): string {
-        if (($officialSource['official'] ?? false) === true) {
-            return 'PRIMARY_OFFICIAL';
-        }
+        if (
+    ($officialSource['official'] ?? false) === true
+    && ($officialSource['selfAnnouncement'] ?? false) === true
+) {
+    return 'PRIMARY_OFFICIAL';
+}
 
         $relevantItems = $this->evidenceSourceMetrics04B->selectRelevantItems($evidenceItems, $relevantIndexes);
 
@@ -168,20 +172,51 @@ final class VerdictDecisionService04B
             return 'UNKNOWN';
         }
 
-        $maxConfidence = 0;
+        $bestItem = null;
+$maxConfidence = 0;
 
-        foreach ($relevantItems as $item) {
-            $maxConfidence = max($maxConfidence, (int) ($item['confidenceScore'] ?? $item['sourceScore'] ?? 0));
-        }
+foreach ($relevantItems as $item) {
+    $confidence = (int) ($item['confidenceScore'] ?? $item['sourceScore'] ?? 0);
 
-        return match (true) {
-            $maxConfidence >= 90 => 'PRIMARY_DOCUMENT_OR_TOP_SOURCE',
-            $maxConfidence >= 75 => 'REPUTABLE_MEDIA',
-            $maxConfidence >= 60 => 'KNOWN_MEDIA',
-            $maxConfidence >= 40 => 'WEAK_MEDIA',
-            $maxConfidence >= 20 => 'SOCIAL_OR_LOW_AUTHORITY_SOURCE',
-            default => 'UNKNOWN',
-        };
+    if ($confidence > $maxConfidence) {
+        $maxConfidence = $confidence;
+        $bestItem = $item;
+    }
+}
+
+$sourceType = strtolower(
+    trim((string) ($bestItem['confidenceType'] ?? 'unknown'))
+);
+
+if ($sourceType === 'academic') {
+    return 'ACADEMIC_SOURCE';
+}
+
+if ($sourceType === 'government') {
+    return 'GOVERNMENT_SOURCE';
+}
+
+if ($sourceType === 'organization') {
+    return 'ORGANIZATION_SOURCE';
+}
+
+if ($sourceType === 'media') {
+    return match (true) {
+        $maxConfidence >= 90 => 'PRIMARY_DOCUMENT_OR_TOP_SOURCE',
+        $maxConfidence >= 75 => 'REPUTABLE_MEDIA',
+        $maxConfidence >= 60 => 'KNOWN_MEDIA',
+        default => 'WEAK_MEDIA',
+    };
+}
+
+return match (true) {
+    $maxConfidence >= 90 => 'PRIMARY_DOCUMENT_OR_TOP_SOURCE',
+    $maxConfidence >= 75 => 'HIGH_CONFIDENCE_SOURCE',
+    $maxConfidence >= 60 => 'KNOWN_SOURCE',
+    $maxConfidence >= 40 => 'WEAK_SOURCE',
+    $maxConfidence >= 20 => 'SOCIAL_OR_LOW_AUTHORITY_SOURCE',
+    default => 'UNKNOWN',
+};
     }
 
     public function detectRiskDecision(string $postText): string

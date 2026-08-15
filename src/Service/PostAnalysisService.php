@@ -2,6 +2,7 @@
 
 namespace App\Service;
 
+
 class PostAnalysisService
 {
     public function __construct(
@@ -16,6 +17,7 @@ class PostAnalysisService
     private readonly ClaimExtractionService $claimExtractionService,
     private readonly ClaimVerifiabilityService $claimVerifiabilityService,
     private readonly NonVerifiableReasonService $nonVerifiableReasonService,
+    
 ) {
 }
 
@@ -27,6 +29,7 @@ class PostAnalysisService
     $mainClaim = trim((string) ($claims[0] ?? ''));
 
     $claimVerifiability = $this->claimVerifiabilityService->assess($mainClaim, $originalPostText);
+    
 
     if (($claimVerifiability['verifiable'] ?? false) !== true) {
         $nonVerifiableReason = $this->nonVerifiableReasonService->classify(
@@ -86,7 +89,14 @@ $internetEvidenceData = $this->internetEvidenceSearchService->search($searchQuer
             $evidenceItems
         );
 
-        $officialSource = $this->officialSourceDetectorService->detect($sourceContext, $postText);
+        $officialSource = $this->officialSourceDetectorService->detect(
+    $sourceContext,
+    $postText,
+    $mainClaim
+);
+        $isOfficialSelfAnnouncement =
+    ($officialSource['official'] ?? false) === true
+    && ($officialSource['selfAnnouncement'] ?? false) === true;
 
 $formattedEvidenceResult = $this->evidenceFormatterService->formatSourcesWithDebug(
     $evidenceItems,
@@ -104,7 +114,26 @@ $lowConfidenceEvidenceCandidates = $this->buildLowConfidenceEvidenceCandidates(
 $noDisplayablePositiveEvidence = false;
 $rawEvidenceStatus = strtoupper((string) ($evidenceDecision['status'] ?? 'UNKNOWN'));
 
+// A confirmed official source making a claim about something it directly
+// controls is itself valid first-party evidence.
+//
+// External sources are still useful for independent corroboration, but
+// their absence must not erase a genuine first-party announcement.
+//
+// Never override an explicit contradiction here.
 if (
+    $isOfficialSelfAnnouncement
+    && $rawEvidenceStatus !== 'CONTRADICTED'
+) {
+    $evidenceDecision['status'] = 'SUPPORTED';
+    $evidenceDecision['supportCount'] = max(
+        1,
+        (int) ($evidenceDecision['supportCount'] ?? 0)
+    );
+
+    $evidenceDecision['reason'] =
+        'The original post is a confirmed official first-party announcement about a matter controlled by the publishing organization.';
+} elseif (
     $formattedEvidenceSources === []
     && in_array($rawEvidenceStatus, ['SUPPORTED', 'PARTIALLY_SUPPORTED'], true)
 ) {
@@ -118,7 +147,9 @@ if (
         $rawEvidenceStatus
     );
 }
-$noDisplayableNonContradictoryEvidence = $formattedEvidenceSources === []
+$noDisplayableNonContradictoryEvidence =
+    !$isOfficialSelfAnnouncement
+    && $formattedEvidenceSources === []
     && strtoupper((string) ($evidenceDecision['status'] ?? 'UNKNOWN')) !== 'CONTRADICTED';
 
 if ($noDisplayableNonContradictoryEvidence && !$noDisplayablePositiveEvidence) {

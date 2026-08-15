@@ -19,13 +19,16 @@ final class ScoreCalculator04B
     ): int {
         $status = strtoupper((string) ($evidenceDecision['status'] ?? 'UNKNOWN'));
 
-        $hasUsableEvidenceSource = !empty($formattedEvidenceSources);
-        $isOfficialSource = ($officialSource['official'] ?? false) === true;
+       $hasUsableEvidenceSource = !empty($formattedEvidenceSources);
+
+$isOfficialSelfAnnouncement =
+    ($officialSource['official'] ?? false) === true
+    && ($officialSource['selfAnnouncement'] ?? false) === true;
 
         // Production safety:
         // DeFake should not give high evidence-match points if it cannot show
         // any usable evidence source, unless the original source itself is official.
-        if (!$hasUsableEvidenceSource && !$isOfficialSource) {
+        if (!$hasUsableEvidenceSource && !$isOfficialSelfAnnouncement) {
             return match ($status) {
                 'SUPPORTED' => 15,
                 'PARTIALLY_SUPPORTED' => 10,
@@ -130,7 +133,10 @@ final class ScoreCalculator04B
     array $evidenceItems,
     array $relevantIndexes = []
 ): int {
-    if (($officialSource['official'] ?? false) === true) {
+    if (
+    ($officialSource['official'] ?? false) === true
+    && ($officialSource['selfAnnouncement'] ?? false) === true
+) {
         $confidence = (int) ($officialSource['confidence'] ?? 0);
         $category = (string) ($officialSource['category'] ?? 'unknown');
 
@@ -190,13 +196,17 @@ public function calculateSourceIndependenceScore(
 
     $distinctSources = count($hosts);
 
-    if (($officialSource['official'] ?? false) === true && $distinctSources >= 1) {
-        return 12;
-    }
+    $isOfficialSelfAnnouncement =
+    ($officialSource['official'] ?? false) === true
+    && ($officialSource['selfAnnouncement'] ?? false) === true;
 
-    if (($officialSource['official'] ?? false) === true) {
-        return 10;
-    }
+if ($isOfficialSelfAnnouncement && $distinctSources >= 1) {
+    return 12;
+}
+
+if ($isOfficialSelfAnnouncement) {
+    return 10;
+}
 
     $maxConfidence = 0;
 

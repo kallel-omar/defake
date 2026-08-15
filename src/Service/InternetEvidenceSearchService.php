@@ -21,7 +21,11 @@ class InternetEvidenceSearchService
 
    public function search(string $postText, ?string $claim = null): array
 {
-    $query = $postText;
+    $query = trim((string) $claim);
+
+if ($query === '') {
+    $query = trim($postText);
+}
 
     $debug = [
         'query' => $query,
@@ -89,18 +93,30 @@ class InternetEvidenceSearchService
 
         $confidence = $this->sourceConfidenceService->score($link);
 
-        $rankedItems[] = [
-            'item' => $item,
-            'relevanceScore' => $relevanceScore,
-            'sourceScore' => $confidence['score'] ?? 0,
-            'sourceLabel' => $confidence['label'] ?? 'Unknown',
-        ];
-    }
+        $sourceScore = (int) ($confidence['score'] ?? 0);
 
-    usort($rankedItems, static function (array $a, array $b): int {
-        return [$b['relevanceScore'], $b['sourceScore']]
-            <=> [$a['relevanceScore'], $a['sourceScore']];
-    });
+$rankedItems[] = [
+    'item' => $item,
+    'relevanceScore' => $relevanceScore,
+    'sourceScore' => $sourceScore,
+    'sourceLabel' => $confidence['label'] ?? 'Unknown',
+
+    // Relevance remains important, but strong sources should be able
+    // to outrank weak websites when both match the same claim.
+    'rankingScore' => ($relevanceScore * 4) + $sourceScore,
+];
+    }
+usort($rankedItems, static function (array $a, array $b): int {
+    return [
+        $b['rankingScore'],
+        $b['relevanceScore'],
+        $b['sourceScore'],
+    ] <=> [
+        $a['rankingScore'],
+        $a['relevanceScore'],
+        $a['sourceScore'],
+    ];
+});
 
     foreach ($rankedItems as $rankedItem) {
         $item = $rankedItem['item'];
@@ -114,14 +130,87 @@ class InternetEvidenceSearchService
             'sourceLabel' => $rankedItem['sourceLabel'],
         ];
     }
+$strongestCandidateSourceScore = 0;
 
-    if (empty($rankedItems)) {
-        return [
-            'text' => 'No relevant internet evidence found. Search results existed, but they did not match the key claim context.',
-            'items' => [],
-            'debug' => $debug,
+foreach ($rankedItems as $rankedItem) {
+    $strongestCandidateSourceScore = max(
+        $strongestCandidateSourceScore,
+        (int) ($rankedItem['sourceScore'] ?? 0)
+    );
+}
+
+$needsWebSearchFallback =
+    $debug['endpoint'] === 'news'
+    && (
+        empty($rankedItems)
+        || $strongestCandidateSourceScore < 60
+    );
+
+if ($needsWebSearchFallback) {
+    $debug['endpoint'] = 'search_fallback_after_weak_or_irrelevant_news';
+
+    $searchData = $this->callSerper('search', $query);
+    $searchItems = $searchData['organic'] ?? [];
+
+    $debug['searchFallbackRawItemsCount'] = count($searchItems);
+
+    foreach (array_slice($searchItems, 0, 10) as $item) {
+        $title = $item['title'] ?? 'No title';
+        $snippet = $item['snippet'] ?? '';
+        $link = $item['link'] ?? '';
+
+        $relevanceScore = $this->evidenceRankingService->scoreEvidenceRelevance(
+            $item,
+            $claim ?? $postText
+        );
+
+        if ($relevanceScore < 3) {
+            $debug['rankingRejected'][] = [
+                'reason' => 'relevance_score_below_threshold',
+                'title' => $title,
+                'link' => $link,
+                'relevanceScore' => $relevanceScore,
+                'endpoint' => 'search_fallback',
+            ];
+
+            continue;
+        }
+
+        if ($link === '') {
+            $debug['rankingRejected'][] = [
+                'reason' => 'missing_link',
+                'title' => $title,
+                'link' => $link,
+                'relevanceScore' => $relevanceScore,
+                'endpoint' => 'search_fallback',
+            ];
+
+            continue;
+        }
+
+        $confidence = $this->sourceConfidenceService->score($link);
+
+        $rankedItems[] = [
+            'item' => $item,
+            'relevanceScore' => $relevanceScore,
+            'sourceScore' => $confidence['score'] ?? 0,
+            'sourceLabel' => $confidence['label'] ?? 'Unknown',
         ];
     }
+
+    usort($rankedItems, static function (array $a, array $b): int {
+        return [$b['relevanceScore'], $b['sourceScore']]
+            <=> [$a['relevanceScore'], $a['sourceScore']];
+    });
+}
+
+if (empty($rankedItems)) {
+    return [
+        'text' => 'No relevant internet evidence found. News and web search results did not sufficiently match the key claim context.',
+        'items' => [],
+        'debug' => $debug,
+    ];
+}
 
     $rankedEvidenceItems = [];
 
@@ -169,7 +258,7 @@ class InternetEvidenceSearchService
                 ],
                 'json' => [
                     'q' => $query,
-                    'num' => 5,
+                    'num' => 10,
                 ],
                 'timeout' => 30,
             ]);

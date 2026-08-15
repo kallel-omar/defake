@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+
 class ClaimExtractionService
 {
     private const NO_VERIFIABLE_CLAIM = 'NO_VERIFIABLE_CLAIM';
@@ -21,7 +22,8 @@ class ClaimExtractionService
     private const MAX_RETURNED_CLAIMS = 2;
 
     public function __construct(
-        private readonly GroqAiService $groqAiService
+        private readonly GroqAiService $groqAiService,
+       
     ) {
     }
 
@@ -261,6 +263,7 @@ PROMPT;
         if (!is_array($result)) {
             return [self::NO_VERIFIABLE_CLAIM];
         }
+        
 
         $factCheckable = ($result['fact_checkable'] ?? null) === true;
 
@@ -273,12 +276,19 @@ PROMPT;
         if (empty($claims)) {
             return [self::NO_VERIFIABLE_CLAIM];
         }
+$claims = $this->cleanExtractedClaims($claims, $postText, $analysisContext);
 
-        $claims = $this->cleanExtractedClaims($claims, $postText, $analysisContext);
+if (empty($claims)) {
+    $claims = $this->retryStrictExtraction(
+        $claimExtractionText,
+        $postText,
+        $analysisContext
+    );
+}
 
-        if (empty($claims)) {
-            return [self::NO_VERIFIABLE_CLAIM];
-        }
+if (empty($claims)) {
+    return [self::NO_VERIFIABLE_CLAIM];
+}
 
         return array_slice($claims, 0, self::MAX_RETURNED_CLAIMS);
     }
@@ -613,30 +623,38 @@ PROMPT;
     }
 
     private function extractNumberAnchors(string $text): array
-    {
-        if (preg_match_all('/(?<![\p{L}\p{N}])\d+(?:[.,]\d+)?\s*%?/u', $text, $matches) !== 1) {
-            return [];
-        }
+{
+    $matchCount = preg_match_all(
+        '/(?<![\p{L}\p{N}])\d+(?:[.,]\d+)?\s*%?/u',
+        $text,
+        $matches
+    );
 
-        return array_values(array_unique(array_map(
-            static fn (string $anchor) => str_replace(' ', '', mb_strtolower($anchor)),
-            $matches[0]
-        )));
+    if ($matchCount === false || $matchCount === 0) {
+        return [];
     }
+
+    return array_values(array_unique(array_map(
+        static fn (string $anchor) => str_replace(' ', '', mb_strtolower($anchor)),
+        $matches[0]
+    )));
+}
 
     private function extractDateAnchors(string $text): array
-    {
-        $pattern = '/\b(today|yesterday|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december)\b/iu';
+{
+    $pattern = '/\b(today|yesterday|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december)\b/iu';
 
-        if (preg_match_all($pattern, $text, $matches) !== 1) {
-            return [];
-        }
+    $matchCount = preg_match_all($pattern, $text, $matches);
 
-        return array_values(array_unique(array_map(
-            static fn (string $anchor) => mb_strtolower($anchor),
-            $matches[0]
-        )));
+    if ($matchCount === false || $matchCount === 0) {
+        return [];
     }
+
+    return array_values(array_unique(array_map(
+        static fn (string $anchor) => mb_strtolower($anchor),
+        $matches[0]
+    )));
+}
 
     private function extractShortUppercaseAnchors(string $text): array
     {
@@ -1029,7 +1047,84 @@ PROMPT;
         }
 
         return $term;
+    }private function retryStrictExtraction(
+    string $claimExtractionText,
+    string $originalPostText,
+    array $analysisContext = []
+): array {
+    $prompt = <<<PROMPT
+You are DeFake's strict factual claim extractor.
+
+The previous extraction was rejected because it may have changed,
+translated, invented, or replaced an important entity or factual detail.
+
+Extract ONE main verifiable factual claim from the text below.
+
+STRICT RULES:
+- Use only information explicitly present in the supplied post.
+- Preserve the original language.
+- Preserve person names, club names, company names, organization names,
+  ministries, countries, cities, dates, numbers, amounts and durations.
+- NEVER translate an entity name.
+- NEVER replace an entity with another entity.
+- NEVER use outside knowledge.
+- Do not correct or guess names.
+- Do not add context that is not written in the post.
+- Prefer wording copied closely from the original text.
+- The claim must state who/what did what and preserve important details.
+- If no factual claim exists, return fact_checkable=false.
+
+Return ONLY valid JSON:
+
+{
+  "fact_checkable": true,
+  "main_claim": "claim in the original language"
+}
+
+Or:
+
+{
+  "fact_checkable": false,
+  "main_claim": null
+}
+
+Post:
+{$claimExtractionText}
+PROMPT;
+
+    $content = $this->groqAiService->ask([
+        [
+            'role' => 'system',
+            'content' => 'Return only valid JSON. Preserve the original language and entities exactly.',
+        ],
+        [
+            'role' => 'user',
+            'content' => $prompt,
+        ],
+    ]);
+
+    if (!$content) {
+        return [];
     }
+
+    $result = $this->decodeJson($content);
+
+    if (!is_array($result) || ($result['fact_checkable'] ?? false) !== true) {
+        return [];
+    }
+
+    $claim = $this->normalizeAiClaim($result['main_claim'] ?? null);
+
+    if ($claim === null) {
+        return [];
+    }
+
+    return $this->cleanExtractedClaims(
+        [$claim],
+        $originalPostText,
+        $analysisContext
+    );
+}
 
     private function decodeJson(string $content): ?array
     {

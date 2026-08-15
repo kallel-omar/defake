@@ -121,6 +121,7 @@ final class EvidenceFormatterService
                 'officialCategory' => $officialDecision['category'] ?? 'unknown',
                 'officialConfidence' => $officialDecision['confidence'] ?? 0,
                 'officialReason' => $officialDecision['reason'] ?? '',
+                'confidenceType' => $confidence['type'] ?? 'unknown',
             ];
 
             $sources[] = $source;
